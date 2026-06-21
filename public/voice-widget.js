@@ -22,12 +22,13 @@
   const STR = {
     fab_label: "آواز آرڈر",
     modal_title: "آواز سے آرڈر کریں",
-    modal_subtitle: "بٹن دبائیں اور اپنا آرڈر بتائیں",
+    modal_subtitle: "مائیک آن کریں اور اپنا آرڈر بولیں",
     hint:
       'مثال: "مجھے ۲ کلو آم چاہیے، میرا نام احمد ہے، لاہور گلبرگ، نمبر ۰۳۰۰۱۲۳۴۵۶۷"',
-    mic_start: "بولنا شروع کریں",
-    mic_stop: "رکیں",
-    recording: "سن رہے ہیں…",
+    mic_start: "مائیک آن کریں",
+    mic_stop: "ختم کریں",
+    listening: "سن رہے ہیں — ابھی بولیں…",
+    listening_sub: "جب بولنا ختم ہو جائے تو خود بند ہو جائے گا",
     processing: "پروسیسنگ ہو رہی ہے…",
     confirm_title: "آرڈر کی تصدیق کریں",
     confirm_btn: "تصدیق کریں ✓",
@@ -41,6 +42,8 @@
     not_found_sub: "براہ کرم دوبارہ کوشش کریں",
     error_title: "خرابی",
     error_sub: "معذرت، دوبارہ کوشش کریں",
+    reconnect_sub:
+      "دکاندار کو Shopify ایڈمن میں Aawaz Order ایپ کھولنی ہوگی۔",
     product_label: "پروڈکٹ",
     qty_label: "مقدار",
     price_label: "قیمت",
@@ -52,12 +55,26 @@
 
   // ── State ─────────────────────────────────────────────────────────────────
   const STATE = {
-    stage: "idle",        // idle | recording | processing | confirm | missing | not_found | success | error
+    stage: "idle",
     mediaRecorder: null,
     audioChunks: [],
     voiceOrderId: null,
     lastResult: null,
     audioPlayer: new Audio(),
+    mediaStream: null,
+    audioContext: null,
+    analyser: null,
+    vadFrame: null,
+    recordingStartedAt: 0,
+    heardSpeech: false,
+    silenceSince: 0,
+  };
+
+  const VAD = {
+    minMs: 900,
+    silenceMs: 1400,
+    maxMs: 45000,
+    threshold: 0.018,
   };
 
   // ── Inject HTML ───────────────────────────────────────────────────────────
@@ -94,6 +111,28 @@
         </svg>
       </button>
       <p id="aawaz-mic-status" class="aawaz-hint">${STR.hint}</p>
+    </div>
+
+    <!-- LIVE LISTENING stage -->
+    <div class="aawaz-stage aawaz-hidden" id="aawaz-stage-listening">
+      <div class="aawaz-listening-ring">
+        <button id="aawaz-live-mic" class="aawaz-mic-btn aawaz-recording" aria-label="${STR.listening}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+      </div>
+      <h2>${STR.listening}</h2>
+      <p class="aawaz-sub">${STR.listening_sub}</p>
+      <div id="aawaz-waveform" class="aawaz-waveform" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <button id="aawaz-stop-btn" class="aawaz-btn aawaz-btn-ghost">${STR.mic_stop}</button>
     </div>
 
     <!-- PROCESSING stage -->
@@ -188,14 +227,55 @@
   function closeModal() {
     overlay.classList.remove("aawaz-active");
     document.body.style.overflow = "";
-    stopRecording();
+    stopListening(false);
   }
 
-  // ── Audio recording ───────────────────────────────────────────────────────
-  async function startRecording() {
+  function cleanupAudioGraph() {
+    if (STATE.vadFrame) {
+      cancelAnimationFrame(STATE.vadFrame);
+      STATE.vadFrame = null;
+    }
+    if (STATE.mediaStream) {
+      STATE.mediaStream.getTracks().forEach((t) => t.stop());
+      STATE.mediaStream = null;
+    }
+    if (STATE.audioContext) {
+      STATE.audioContext.close().catch(() => {});
+      STATE.audioContext = null;
+    }
+    STATE.analyser = null;
+  }
+
+  // ── Real-time microphone listening ────────────────────────────────────────
+  async function startListening() {
+    if (STATE.mediaRecorder && STATE.mediaRecorder.state === "recording") {
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      STATE.mediaStream = stream;
       STATE.audioChunks = [];
+      STATE.recordingStartedAt = Date.now();
+      STATE.heardSpeech = false;
+      STATE.silenceSince = 0;
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        STATE.audioContext = new AudioCtx();
+        const source = STATE.audioContext.createMediaStreamSource(stream);
+        STATE.analyser = STATE.audioContext.createAnalyser();
+        STATE.analyser.fftSize = 256;
+        STATE.analyser.smoothingTimeConstant = 0.65;
+        source.connect(STATE.analyser);
+      }
 
       const options = getSupportedMimeType();
       STATE.mediaRecorder = new MediaRecorder(stream, options);
@@ -205,21 +285,75 @@
       };
 
       STATE.mediaRecorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
+        cleanupAudioGraph();
         sendAudio();
       };
 
-      STATE.mediaRecorder.start(250);
-      showStage("idle");
-      micBtn.classList.add("aawaz-recording");
-      micStatus.textContent = STR.recording;
+      STATE.mediaRecorder.start(200);
+      showStage("listening");
+      startVoiceActivityMonitor();
     } catch (err) {
       console.error("[AawazOrder] Microphone error:", err);
       showError("مائیکروفون تک رسائی نہیں ملی۔ براہ کرم اجازت دیں۔");
     }
   }
 
-  function stopRecording() {
+  function startVoiceActivityMonitor() {
+    const waveform = $("aawaz-waveform");
+    const bars = waveform ? waveform.querySelectorAll("span") : [];
+    const timeData = new Uint8Array(STATE.analyser ? STATE.analyser.fftSize : 0);
+
+    const tick = () => {
+      if (!STATE.analyser) {
+        STATE.vadFrame = requestAnimationFrame(tick);
+        return;
+      }
+
+      STATE.analyser.getByteTimeDomainData(timeData);
+      let sum = 0;
+      for (let i = 0; i < timeData.length; i++) {
+        const v = (timeData[i] - 128) / 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / timeData.length);
+
+      bars.forEach((bar, i) => {
+        const scale = Math.min(1, rms * (4 + i * 0.35));
+        bar.style.transform = `scaleY(${0.15 + scale})`;
+      });
+
+      const elapsed = Date.now() - STATE.recordingStartedAt;
+      if (rms > VAD.threshold) {
+        STATE.heardSpeech = true;
+        STATE.silenceSince = 0;
+      } else if (STATE.heardSpeech) {
+        if (!STATE.silenceSince) STATE.silenceSince = Date.now();
+        if (
+          elapsed >= VAD.minMs &&
+          Date.now() - STATE.silenceSince >= VAD.silenceMs
+        ) {
+          stopListening(true);
+          return;
+        }
+      }
+
+      if (elapsed >= VAD.maxMs) {
+        stopListening(true);
+        return;
+      }
+
+      STATE.vadFrame = requestAnimationFrame(tick);
+    };
+
+    STATE.vadFrame = requestAnimationFrame(tick);
+  }
+
+  function stopListening(shouldProcess) {
+    if (STATE.vadFrame) {
+      cancelAnimationFrame(STATE.vadFrame);
+      STATE.vadFrame = null;
+    }
+
     if (STATE.mediaRecorder && STATE.mediaRecorder.state === "recording") {
       try {
         STATE.mediaRecorder.requestData();
@@ -227,7 +361,10 @@
         /* ignore */
       }
       STATE.mediaRecorder.stop();
+    } else if (!shouldProcess) {
+      cleanupAudioGraph();
     }
+
     micBtn.classList.remove("aawaz-recording");
   }
 
@@ -347,7 +484,11 @@
       STATE.lastResult = data;
 
       if (!res.ok) {
-        showError(data.error || STR.error_sub);
+        const msg =
+          data.code === "shop_reconnect_required"
+            ? STR.reconnect_sub
+            : data.error || STR.error_sub;
+        showError(msg);
         playAudio(data.audio);
         return;
       }
@@ -512,42 +653,14 @@
     if (e.target === overlay) closeModal();
   });
 
-  // Mic button — press-and-hold on desktop, tap-to-toggle on mobile
-  let isHoldMode = false;
-  let holdTimer = null;
-
-  micBtn.addEventListener("mousedown", () => {
-    holdTimer = setTimeout(() => {
-      isHoldMode = true;
-      startRecording();
-    }, 150);
+  // Mic — tap once to open live listening (no hold-to-record)
+  micBtn.addEventListener("click", () => {
+    if (STATE.stage === "idle") startListening();
   });
 
-  micBtn.addEventListener("mouseup", () => {
-    clearTimeout(holdTimer);
-    if (isHoldMode) {
-      isHoldMode = false;
-      stopRecording();
-    } else if (STATE.stage === "idle") {
-      // Tap mode
-      if (STATE.mediaRecorder && STATE.mediaRecorder.state === "recording") {
-        stopRecording();
-      } else {
-        startRecording();
-      }
-    }
-  });
+  $("aawaz-stop-btn").addEventListener("click", () => stopListening(true));
 
-  // Touch support (mobile)
-  micBtn.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    startRecording();
-  }, { passive: false });
-
-  micBtn.addEventListener("touchend", (e) => {
-    e.preventDefault();
-    stopRecording();
-  }, { passive: false });
+  $("aawaz-live-mic").addEventListener("click", () => stopListening(true));
 
   // Confirm button
   $("aawaz-confirm-btn").addEventListener("click", confirmOrder);

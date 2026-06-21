@@ -23,6 +23,7 @@ import { useState, useCallback } from "react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { themeAppEmbedUrl } from "../utils/theme-embed.server";
+import { verifyShopConnection } from "../services/shopify-admin.server";
 
 const LANGUAGE_OPTIONS = [
   { label: "اردو — Urdu", value: "ur" },
@@ -44,9 +45,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const shop = session.shop;
 
   const settings = await db.appSettings.findUnique({ where: { shop } });
+  const connection = await verifyShopConnection(shop);
 
   return json({
     shop,
+    connection,
     appUrl: process.env.SHOPIFY_APP_URL ?? "",
     themeEmbedUrl: themeAppEmbedUrl(
       shop,
@@ -81,7 +84,8 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function Settings() {
-  const { settings, appUrl, shop, themeEmbedUrl } = useLoaderData<typeof loader>();
+  const { settings, appUrl, shop, themeEmbedUrl, connection } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -132,6 +136,23 @@ export default function Settings() {
                 Your widget settings have been updated. Changes take effect
                 immediately.
               </Text>
+            </Banner>
+          </Layout.Section>
+        )}
+
+        {!connection.ok && (
+          <Layout.Section>
+            <Banner tone="critical" title="Store connection required">
+              <Text as="p">
+                Voice orders cannot reach your Shopify catalog until the app is
+                reconnected. Open this settings page from Shopify Admin (reload
+                if needed) or reinstall the app on your store.
+              </Text>
+              {connection.error && (
+                <Text as="p" tone="subdued">
+                  {connection.error}
+                </Text>
+              )}
             </Banner>
           </Layout.Section>
         )}

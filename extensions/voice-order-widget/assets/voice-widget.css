@@ -216,6 +216,36 @@
   font-weight: 600;
 }
 
+/* ── Live listening waveform ─────────────────────────────────────────────── */
+.aawaz-listening-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.aawaz-waveform {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  height: 56px;
+  width: 100%;
+  max-width: 280px;
+  margin: 8px 0 4px;
+}
+
+.aawaz-waveform span {
+  display: block;
+  width: 6px;
+  height: 40px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--aawaz-color) 0%, var(--aawaz-color-dark) 100%);
+  transform: scaleY(0.15);
+  transform-origin: bottom center;
+  transition: transform 0.08s ease-out;
+}
+
 /* ── Icons ───────────────────────────────────────────────────────────────── */
 .aawaz-logo,
 .aawaz-confirm-icon,

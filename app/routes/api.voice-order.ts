@@ -16,8 +16,12 @@ import {
   unstable_createMemoryUploadHandler,
   unstable_parseMultipartFormData,
 } from "@remix-run/node";
-import { unauthenticated } from "../shopify.server";
 import db from "../db.server";
+import {
+  getOfflineAdmin,
+  isShopifyUnauthorized,
+  ShopifyConnectionError,
+} from "../services/shopify-admin.server";
 import { transcribeAudio } from "../services/whisper.server";
 import {
   extractOrderDetails,
@@ -105,8 +109,7 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    // Get Shopify admin client using the stored offline session for this shop
-    const { admin } = await unauthenticated.admin(shop);
+    const { admin } = await getOfflineAdmin(shop);
     logStep("shopify session loaded");
 
     // Load app settings for this shop
@@ -255,9 +258,27 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   } catch (err) {
     console.error("[voice-order] Error:", err);
+
+    if (err instanceof ShopifyConnectionError || isShopifyUnauthorized(err)) {
+      const reconnectUrdu =
+        "اسٹور سے رابطہ نہیں ہے۔ دکاندار کو Shopify ایڈمن میں Aawaz Order ایپ کھولنی ہوگی۔";
+      const audio = await textToSpeechUrdu(reconnectUrdu).catch(() => "");
+      return json(
+        {
+          stage: "error",
+          code: "shop_reconnect_required",
+          error: reconnectUrdu,
+          audio,
+        },
+        { status: 503, headers },
+      );
+    }
+
     const message =
-      err instanceof Error && err.message.includes("Invalid file format")
-        ? "Invalid audio format from your browser. Please try again or use Chrome."
+      err instanceof Error &&
+      (err.message.includes("Invalid file format") ||
+        err.message.includes("corrupted or unsupported"))
+        ? "آڈیو فارمیٹ کی خرابی۔ دوبارہ کوشش کریں۔"
         : "Internal server error";
     const audio = await textToSpeechUrdu(UrduMessages.generalError()).catch(
       () => "",
@@ -290,7 +311,7 @@ async function handleConfirm(
     return json({ error: "Order already processed" }, { status: 409, headers });
   }
 
-  const { admin } = await unauthenticated.admin(shop);
+  const { admin } = await getOfflineAdmin(shop);
 
   const extraction = {
     customer_name: voiceOrder.customerName,
