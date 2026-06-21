@@ -24,7 +24,7 @@
     modal_title: "آواز سے آرڈر کریں",
     modal_subtitle: "مائیک آن کریں اور اپنا آرڈر بولیں",
     hint:
-      'مثال: "مجھے ۲ کلو آم چاہیے، میرا نام احمد ہے، لاہور گلبرگ، نمبر ۰۳۰۰۱۲۳۴۵۶۷"',
+      'مثال: "مجھے ۲ کلو آم چاہیے۔ نام: احمد۔ فون: ۰۳۰۰۱۲۳۴۵۶۷۔ پتہ: لاہور گلبرگ سٹریٹ ۵"',
     mic_start: "مائیک آن کریں",
     mic_stop: "ختم کریں",
     listening: "سن رہے ہیں — ابھی بولیں…",
@@ -51,7 +51,7 @@
     qty_label: "مقدار",
     price_label: "قیمت",
     name_label: "نام",
-    phone_label: "فون",
+    phone_label: "رابطہ / فون نمبر",
     address_label: "پتہ",
     rs: "روپے",
   };
@@ -588,7 +588,7 @@
       </div>
       <div class="aawaz-info-row">
         <span class="aawaz-info-label">${STR.address_label}</span>
-        <span class="aawaz-info-value">${e.full_address || "—"}</span>
+        <span class="aawaz-info-value">${formatAddress(e)}</span>
       </div>
     `;
 
@@ -596,21 +596,43 @@
     showStage("confirm");
   }
 
+  function formatAddress(extraction) {
+    const parts = [
+      extraction.street,
+      extraction.area,
+      extraction.city,
+      extraction.full_address,
+    ]
+      .map((p) => (p || "").trim())
+      .filter(Boolean);
+    return [...new Set(parts)].join("، ") || "—";
+  }
+
   function showMissingStage(data) {
     const fieldLabels = {
       customer_name: "نام",
-      phone: "فون نمبر",
+      phone: "رابطہ / فون نمبر",
       full_address: "پتہ",
+      city: "پتہ",
+      area: "پتہ",
+      street: "پتہ",
       size: "سائز",
       color: "رنگ",
       Size: "سائز",
       Color: "رنگ",
     };
-    const missingText = (data.missing_fields || [])
+    const seen = new Set();
+    const labels = (data.missing_fields || [])
       .map((f) => fieldLabels[f] || f)
-      .join("، ");
+      .filter((label) => {
+        if (seen.has(label)) return false;
+        seen.add(label);
+        return true;
+      });
     $("aawaz-missing-text").textContent =
-      `براہ کرم ${missingText} بھی بتائیں۔`;
+      labels.length
+        ? `براہ کرم ${labels.join("، ")} بھی بتائیں۔`
+        : STR.missing_title;
     if (data.voiceOrderId) STATE.voiceOrderId = data.voiceOrderId;
     showStage("missing");
   }

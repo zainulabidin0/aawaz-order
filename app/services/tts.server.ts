@@ -45,14 +45,25 @@ export const UrduMessages = {
   missingInfo: (fields: string[]) => {
     const fieldMap: Record<string, string> = {
       customer_name: "نام",
-      phone: "فون نمبر",
+      phone: "رابطہ / فون نمبر",
       full_address: "پتہ",
+      city: "پتہ",
+      area: "پتہ",
+      street: "پتہ",
       size: "سائز",
       color: "رنگ",
       Size: "سائز",
       Color: "رنگ",
     };
-    const fieldNames = fields.map((f) => fieldMap[f] ?? f).join("، ");
+    const seen = new Set<string>();
+    const fieldNames = fields
+      .map((f) => fieldMap[f] ?? f)
+      .filter((label) => {
+        if (seen.has(label)) return false;
+        seen.add(label);
+        return true;
+      })
+      .join("، ");
     return `براہ کرم ${fieldNames} بھی بتائیں تاکہ آرڈر مکمل ہو سکے۔`;
   },
 

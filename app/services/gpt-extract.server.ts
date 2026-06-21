@@ -41,13 +41,21 @@ RULES:
 - size: Clothing/shoe size if mentioned (S, M, L, XL, 32, 42, etc.). Empty string if not mentioned.
 - color: Color if mentioned (red, blue, black, safaid, kala, etc.). Empty string if not mentioned.
 - variant_options: Object mapping option names to values when customer mentions product variants, e.g. {"Size":"Large","Color":"Red"}. Use English values. Empty object {} if none.
-- customer_name: Full name. Leave empty string if not mentioned.
-- phone: Pakistani mobile number. Formats: 03XX-XXXXXXX, 03XXXXXXXXX, +923XXXXXXXXX. Normalize to 03XXXXXXXXX format.
-- full_address: The complete address as a single string.
-- city: City name in English (e.g. "Lahore", "Karachi", "Islamabad").
-- area: Neighborhood/colony/mohalla/sector name.
-- street: Street, house number, flat number.
-- missing_fields: Array of field names the customer did NOT provide. Use: ["customer_name", "phone", "full_address", "size", "color"]. Only include size/color if the customer clearly needs to pick a variant but did not say which.
+- customer_name: NAME ONLY — full name of the customer. Put here anything the customer says about their name, including:
+  Urdu/Punjabi/Roman: "نام", "میرا نام", "mera naam", "naam", "name", "customer name", "اپنا نام", "میں ... ہوں".
+  Do NOT put address or phone words in this field.
+- phone: CONTACT NUMBER ONLY — Pakistani mobile number. Put here anything about phone/contact, including:
+  Urdu/Punjabi/Roman: "فون", "نمبر", "phone", "mobile", "موبائل", "contact", "whatsapp", "واٹس ایپ", "رابطہ", "cell".
+  Formats: 03XX-XXXXXXX, 03XXXXXXXXX, +923XXXXXXXXX. Normalize to 03XXXXXXXXX.
+  Do NOT put name or address in this field.
+- full_address: ADDRESS ONLY — complete delivery address as one readable string. Combine ALL location details here, including:
+  Urdu/Punjabi/Roman: "پتہ", "address", "jaga", "جگہ", "makan", "مکان", "ghar", "گھر", "gali", "گلی", "mohalla", "محلہ", "colony", "کالونی", "sector", "سیکٹر", "block", "بلاک", "area", "ilaka", "علاقہ", "shehar", "شہر", "city".
+  Also fill city, area, street as sub-fields when mentioned, but full_address must always contain the full combined address.
+- city: City name in English (e.g. "Lahore", "Karachi", "Islamabad"). Part of address — also include in full_address.
+- area: Neighborhood/colony/mohalla/sector. Part of address — also include in full_address.
+- street: Street, house number, flat number. Part of address — also include in full_address.
+- missing_fields: Use ONLY these keys: "customer_name", "phone", "full_address", "size", "color".
+  If customer gave name but not phone, use ["phone"]. If they gave city/area but you can build full_address, do NOT mark full_address missing.
 - confidence: Your confidence (0.0-1.0) that you correctly understood the order.
 - response_urdu: A short Urdu sentence summarizing what you understood, to read back to the customer for confirmation.
 
@@ -81,8 +89,8 @@ export async function extractOrderDetails(
   try {
     const parsed = JSON.parse(raw) as Partial<OrderExtraction>;
 
-    // Apply safe defaults for any missing fields
-    return {
+    // Apply safe defaults and normalize into name / phone / address sections
+    return normalizeExtraction({
       product_query: parsed.product_query ?? "",
       product_query_original: parsed.product_query_original ?? parsed.product_query ?? "",
       quantity: Number(parsed.quantity) || 1,
@@ -106,10 +114,44 @@ export async function extractOrderDetails(
       response_urdu:
         parsed.response_urdu ??
         "آپ کا آرڈر موصول ہو گیا، براہ کرم تصدیق کریں۔",
-    };
+    });
   } catch {
     throw new Error(`Failed to parse GPT-4o response: ${raw}`);
   }
+}
+
+/** Single display string for the address section. */
+export function formatAddressDisplay(
+  extraction: Pick<OrderExtraction, "street" | "area" | "city" | "full_address">,
+): string {
+  const parts = [extraction.street, extraction.area, extraction.city, extraction.full_address]
+    .map((p) => p?.trim())
+    .filter(Boolean);
+  return [...new Set(parts)].join(", ");
+}
+
+/** Merge name, phone, and address terms into their correct sections. */
+export function normalizeExtraction(
+  extraction: OrderExtraction,
+): OrderExtraction {
+  const customer_name = extraction.customer_name.trim();
+  const phone = extraction.phone.trim();
+  const full_address = formatAddressDisplay(extraction);
+
+  const missing_fields = extraction.missing_fields.filter((f) => {
+    if (f === "customer_name") return !customer_name;
+    if (f === "phone") return !phone;
+    if (f === "full_address") return !full_address;
+    return true;
+  });
+
+  return {
+    ...extraction,
+    customer_name,
+    phone,
+    full_address,
+    missing_fields,
+  };
 }
 
 /**
@@ -126,16 +168,16 @@ export function buildConfirmationUrdu(
       ? `${extraction.quantity} ${extraction.unit}`
       : `ایک ${extraction.unit}`;
   const variantPart = variantLabel ? ` (${variantLabel})` : "";
-  return `آپ نے ${qty} ${productTitle}${variantPart} کا آرڈر دیا ہے۔ قیمت ${price} روپے ہے۔ پتہ: ${extraction.full_address}۔ کیا آپ تصدیق کرتے ہیں؟`;
+  return `آپ نے ${qty} ${productTitle}${variantPart} کا آرڈر دیا ہے۔ قیمت ${price} روپے ہے۔ پتہ: ${formatAddressDisplay(extraction)}۔ کیا آپ تصدیق کرتے ہیں؟`;
 }
 
 /**
  * Builds a Pakistani address string for the Shopify order.
  */
 export function buildShopifyAddress(extraction: OrderExtraction) {
+  const display = formatAddressDisplay(extraction);
   const streetLine =
-    [extraction.street, extraction.area].filter(Boolean).join(", ") ||
-    extraction.full_address;
+    [extraction.street, extraction.area].filter(Boolean).join(", ") || display;
 
   return {
     firstName: extraction.customer_name.split(" ")[0] || extraction.customer_name,
