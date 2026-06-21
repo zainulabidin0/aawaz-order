@@ -4,10 +4,10 @@
  * Public endpoint called from the storefront Theme App Extension widget.
  * Orchestrates the full pipeline:
  *   audio → Whisper STT → GPT-4o extract → Shopify product search
- *   → create draft order → TTS confirmation audio
+ *   → create Shopify order → TTS confirmation audio
  *
  * POST /api/voice-order?action=confirm
- * Confirms a pending voice order (creates the Shopify order from the draft).
+ * Confirms a pending voice order (creates the real Shopify order).
  */
 
 import type { ActionFunctionArgs } from "@remix-run/node";
@@ -36,10 +36,10 @@ import {
   productNeedsVariantChoice,
   getSelectableVariants,
   getMissingVariantOptionNames,
-  formatVariantLabel,
+  applyVariantToProduct,
   type ShopifyProduct,
 } from "../services/shopify-products.server";
-import { createAndCompleteOrder } from "../services/shopify-orders.server";
+import { createShopifyOrder } from "../services/shopify-orders.server";
 import { textToSpeechUrdu, UrduMessages } from "../services/tts.server";
 
 // CORS headers — allow requests from any Shopify storefront domain
@@ -135,12 +135,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // ── Step 1: Transcribe audio with Whisper ──────────────────────────────
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
-    const { transcript } = await transcribeAudio(
+    const { transcript: initialTranscript } = await transcribeAudio(
       audioBuffer,
       audioFile.name || "recording.webm",
       language,
       mimeTypeField || audioFile.type || undefined,
     );
+    let transcript = initialTranscript;
     logStep("whisper done");
 
     if (!transcript.trim()) {
@@ -162,7 +163,7 @@ export async function action({ request }: ActionFunctionArgs) {
       if (!priorOrder || priorOrder.shop !== shop) {
         return json({ error: "Order session not found" }, { status: 404, headers });
       }
-      const combined = `${priorOrder.transcript} ${transcript}`.trim();
+      const combined = `${priorOrder.transcript} ${initialTranscript}`.trim();
       extraction = mergeExtraction(
         priorOrder,
         await extractOrderDetails(combined),
@@ -230,10 +231,13 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const message =
-      err instanceof Error &&
-      (err.message.includes("Invalid file format") ||
-        err.message.includes("corrupted or unsupported"))
-        ? "آڈیو فارمیٹ کی خرابی۔ دوبارہ کوشش کریں۔"
+      err instanceof Error
+        ? err.message.includes("Invalid file format") ||
+          err.message.includes("corrupted or unsupported")
+          ? "آڈیو فارمیٹ کی خرابی۔ دوبارہ کوشش کریں۔"
+          : err.message.includes("variant")
+            ? "پروڈکٹ کا سائز یا رنگ منتخب کریں۔"
+            : err.message
         : "Internal server error";
     const audio = await textToSpeechUrdu(UrduMessages.generalError()).catch(
       () => "",
@@ -245,6 +249,23 @@ export async function action({ request }: ActionFunctionArgs) {
 // ── Confirm handler ──────────────────────────────────────────────────────────
 
 async function handleConfirm(
+  request: Request,
+  headers: Record<string, string>
+) {
+  try {
+    return await handleConfirmInner(request, headers);
+  } catch (err) {
+    console.error("[voice-order] confirm error:", err);
+    const message =
+      err instanceof Error ? err.message : "Could not create Shopify order";
+    const audio = await textToSpeechUrdu(UrduMessages.generalError()).catch(
+      () => "",
+    );
+    return json({ stage: "error", error: message, audio }, { status: 500, headers });
+  }
+}
+
+async function handleConfirmInner(
   request: Request,
   headers: Record<string, string>
 ) {
@@ -264,6 +285,12 @@ async function handleConfirm(
   }
   if (voiceOrder.status !== "pending") {
     return json({ error: "Order already processed" }, { status: 409, headers });
+  }
+  if (!voiceOrder.variantId) {
+    return json(
+      { error: "Product variant not selected. Please try again." },
+      { status: 422, headers },
+    );
   }
 
   const { admin } = await getOfflineAdmin(shop);
@@ -522,6 +549,28 @@ async function processMatchedProduct({
     );
   }
 
+  if (!product.variantId) {
+    const audio = await textToSpeechUrdu(
+      UrduMessages.selectVariant(
+        getMissingVariantOptionNames(product, null).length
+          ? getMissingVariantOptionNames(product, null)
+          : ["size", "color"],
+      ),
+    );
+    return json(
+      {
+        stage: "select_variant",
+        transcript,
+        extraction,
+        product,
+        variants: getSelectableVariants(product),
+        missing_options: getMissingVariantOptionNames(product, null),
+        audio,
+      },
+      { status: 200, headers },
+    );
+  }
+
   const price = `Rs. ${parseFloat(product.price).toFixed(0)}`;
   const confirmationText = buildConfirmationUrdu(
     extraction,
@@ -585,6 +634,23 @@ async function processMatchedProduct({
   logStep("tts done");
 
   if (settings?.autoConfirm) {
+    if (!product.variantId) {
+      const audio = await textToSpeechUrdu(UrduMessages.selectVariant(["size", "color"]));
+      return json(
+        {
+          stage: "select_variant",
+          voiceOrderId: voiceOrder.id,
+          transcript,
+          extraction,
+          product,
+          variants: getSelectableVariants(product),
+          missing_options: getMissingVariantOptionNames(product, null),
+          audio,
+        },
+        { status: 200, headers },
+      );
+    }
+
     const result = await createOrderForVoiceOrder(
       admin,
       voiceOrder.id,
@@ -659,12 +725,12 @@ async function createOrderForVoiceOrder(
     : "";
   const note = `آواز آرڈر | Aawaz Order\nPhone: ${extraction.phone}\nAddress: ${extraction.full_address}${variantNote}`;
 
-  const order = await createAndCompleteOrder(admin, {
+  const order = await createShopifyOrder(admin, {
     variantId: product.variantId,
     quantity: extraction.quantity,
     customerName: extraction.customer_name,
     phone: extraction.phone,
-    address1: address.address1,
+    address1: address.address1 || extraction.full_address,
     city: address.city,
     country: "Pakistan",
     countryCode: "PK",

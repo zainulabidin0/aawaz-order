@@ -133,11 +133,15 @@ export function buildConfirmationUrdu(
  * Builds a Pakistani address string for the Shopify order.
  */
 export function buildShopifyAddress(extraction: OrderExtraction) {
+  const streetLine =
+    [extraction.street, extraction.area].filter(Boolean).join(", ") ||
+    extraction.full_address;
+
   return {
     firstName: extraction.customer_name.split(" ")[0] || extraction.customer_name,
-    lastName: extraction.customer_name.split(" ").slice(1).join(" ") || "",
+    lastName: extraction.customer_name.split(" ").slice(1).join(" ") || ".",
     phone: extraction.phone,
-    address1: [extraction.street, extraction.area].filter(Boolean).join(", "),
+    address1: streetLine,
     city: extraction.city || "Unknown",
     country: "Pakistan",
     countryCode: "PK",

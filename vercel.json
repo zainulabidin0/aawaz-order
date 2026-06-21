@@ -10,7 +10,7 @@
   },
   "rewrites": [
     {
-      "source": "/((?!assets/|voice-widget\\.js|favicon\\.ico).*)",
+      "source": "/((?!assets/|voice-widget\\.js|favicon\\.ico|favicon\\.png).*)",
       "destination": "/api/index"
     }
   ]
