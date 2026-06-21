@@ -19,13 +19,15 @@ const CREATE_DRAFT_ORDER_MUTATION = `
 `;
 
 const COMPLETE_DRAFT_ORDER_MUTATION = `
-  mutation draftOrderComplete($id: ID!) {
-    draftOrderComplete(id: $id) {
+  mutation draftOrderComplete($id: ID!, $paymentPending: Boolean) {
+    draftOrderComplete(id: $id, paymentPending: $paymentPending) {
       draftOrder {
         id
+        name
         order {
           id
           name
+          displayFinancialStatus
         }
       }
       userErrors {
@@ -99,6 +101,11 @@ export async function createDraftOrder(
     tags: ["voice-order", "cod", "aawaz-order"],
   };
 
+  // COD — payment collected on delivery
+  Object.assign(input, {
+    customAttributes: [{ key: "payment_method", value: "COD" }],
+  });
+
   const response = await admin.graphql(CREATE_DRAFT_ORDER_MUTATION, {
     variables: { input },
   });
@@ -125,10 +132,10 @@ export async function createDraftOrder(
  */
 export async function completeDraftOrder(
   admin: AdminClient,
-  draftOrderId: string
-): Promise<{ orderId: string; orderName: string }> {
+  draftOrderId: string,
+): Promise<{ orderId: string; orderName: string; draftOrderId: string }> {
   const response = await admin.graphql(COMPLETE_DRAFT_ORDER_MUTATION, {
-    variables: { id: draftOrderId },
+    variables: { id: draftOrderId, paymentPending: true },
   });
 
   const body = await response.json();
@@ -136,13 +143,27 @@ export async function completeDraftOrder(
 
   if (userErrors?.length > 0) {
     throw new Error(
-      `Shopify complete order error: ${userErrors.map((e: { message: string }) => e.message).join(", ")}`
+      `Shopify complete order error: ${userErrors.map((e: { message: string }) => e.message).join(", ")}`,
     );
   }
 
   const order = draftOrder?.order;
+  if (!order?.id) {
+    throw new Error("Draft order was created but could not be completed");
+  }
+
   return {
-    orderId: order?.id ?? draftOrderId,
-    orderName: order?.name ?? "Draft",
+    orderId: order.id,
+    orderName: order.name,
+    draftOrderId: draftOrder.id,
   };
+}
+
+/** Create draft order and complete it so it appears in Shopify Orders. */
+export async function createAndCompleteOrder(
+  admin: AdminClient,
+  params: CreateOrderParams,
+): Promise<{ orderId: string; orderName: string; draftOrderId: string }> {
+  const draft = await createDraftOrder(admin, params);
+  return completeDraftOrder(admin, draft.id);
 }

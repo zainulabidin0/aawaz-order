@@ -246,6 +246,48 @@
   transition: transform 0.08s ease-out;
 }
 
+.aawaz-variant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+
+.aawaz-variant-chip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font-family: var(--aawaz-font);
+  direction: rtl;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.aawaz-variant-chip:hover {
+  border-color: var(--aawaz-color);
+  background: #f0fdf4;
+}
+
+.aawaz-variant-chip-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.aawaz-variant-chip-price {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--aawaz-color);
+}
+
 /* ── Icons ───────────────────────────────────────────────────────────────── */
 .aawaz-logo,
 .aawaz-confirm-icon,

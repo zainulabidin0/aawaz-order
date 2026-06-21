@@ -10,19 +10,22 @@ function getOpenAI() {
 }
 
 export type OrderExtraction = {
-  product_query: string;         // English translation for Shopify product search
-  product_query_original: string; // As spoken in Urdu/Punjabi
+  product_query: string;
+  product_query_original: string;
   quantity: number;
-  unit: string;                  // e.g. "kg", "piece", "litre", "dozen"
+  unit: string;
+  size: string;                  // e.g. "Large", "XL", "42"
+  color: string;                 // e.g. "Red", "Blue"
+  variant_options: Record<string, string>; // e.g. { "Size": "M", "Color": "Black" }
   customer_name: string;
-  phone: string;                 // Pakistani format: 03XX-XXXXXXX
+  phone: string;
   full_address: string;
   city: string;
   area: string;
   street: string;
-  missing_fields: string[];      // Fields the customer did not mention
-  confidence: number;            // 0-1 extraction confidence
-  response_urdu: string;         // Natural Urdu summary to read back to customer
+  missing_fields: string[];
+  confidence: number;
+  response_urdu: string;
 };
 
 const SYSTEM_PROMPT = `You are an order processing assistant for a Pakistani online store.
@@ -35,13 +38,16 @@ RULES:
 - product_query_original: The product name exactly as the customer said it.
 - quantity: Extract the number. Default to 1 if not mentioned.
 - unit: Extract unit like "kg", "gram", "piece", "litre", "dozen", "packet". Default "piece".
+- size: Clothing/shoe size if mentioned (S, M, L, XL, 32, 42, etc.). Empty string if not mentioned.
+- color: Color if mentioned (red, blue, black, safaid, kala, etc.). Empty string if not mentioned.
+- variant_options: Object mapping option names to values when customer mentions product variants, e.g. {"Size":"Large","Color":"Red"}. Use English values. Empty object {} if none.
 - customer_name: Full name. Leave empty string if not mentioned.
 - phone: Pakistani mobile number. Formats: 03XX-XXXXXXX, 03XXXXXXXXX, +923XXXXXXXXX. Normalize to 03XXXXXXXXX format.
 - full_address: The complete address as a single string.
 - city: City name in English (e.g. "Lahore", "Karachi", "Islamabad").
 - area: Neighborhood/colony/mohalla/sector name.
 - street: Street, house number, flat number.
-- missing_fields: Array of field names the customer did NOT provide. Use: ["customer_name", "phone", "full_address"].
+- missing_fields: Array of field names the customer did NOT provide. Use: ["customer_name", "phone", "full_address", "size", "color"]. Only include size/color if the customer clearly needs to pick a variant but did not say which.
 - confidence: Your confidence (0.0-1.0) that you correctly understood the order.
 - response_urdu: A short Urdu sentence summarizing what you understood, to read back to the customer for confirmation.
 
@@ -81,6 +87,12 @@ export async function extractOrderDetails(
       product_query_original: parsed.product_query_original ?? parsed.product_query ?? "",
       quantity: Number(parsed.quantity) || 1,
       unit: parsed.unit ?? "piece",
+      size: parsed.size ?? "",
+      color: parsed.color ?? "",
+      variant_options:
+        parsed.variant_options && typeof parsed.variant_options === "object"
+          ? (parsed.variant_options as Record<string, string>)
+          : {},
       customer_name: parsed.customer_name ?? "",
       phone: normalizePhone(parsed.phone ?? ""),
       full_address: parsed.full_address ?? "",
@@ -103,11 +115,18 @@ export async function extractOrderDetails(
 /**
  * Builds a natural Urdu confirmation message for TTS playback.
  */
-export function buildConfirmationUrdu(extraction: OrderExtraction, productTitle: string, price: string): string {
-  const qty = extraction.quantity > 1
-    ? `${extraction.quantity} ${extraction.unit}`
-    : `ایک ${extraction.unit}`;
-  return `آپ نے ${qty} ${productTitle} کا آرڈر دیا ہے۔ قیمت ${price} روپے ہے۔ پتہ: ${extraction.full_address}۔ کیا آپ تصدیق کرتے ہیں؟`;
+export function buildConfirmationUrdu(
+  extraction: OrderExtraction,
+  productTitle: string,
+  price: string,
+  variantLabel?: string,
+): string {
+  const qty =
+    extraction.quantity > 1
+      ? `${extraction.quantity} ${extraction.unit}`
+      : `ایک ${extraction.unit}`;
+  const variantPart = variantLabel ? ` (${variantLabel})` : "";
+  return `آپ نے ${qty} ${productTitle}${variantPart} کا آرڈر دیا ہے۔ قیمت ${price} روپے ہے۔ پتہ: ${extraction.full_address}۔ کیا آپ تصدیق کرتے ہیں؟`;
 }
 
 /**

@@ -38,6 +38,8 @@
     success_title: "آپ کا آرڈر ہو گیا! ✓",
     success_sub: "دکاندار جلد آپ سے رابطہ کرے گا۔",
     missing_title: "کچھ معلومات درکار ہے",
+    variant_title: "سائز یا رنگ منتخب کریں",
+    variant_sub: "اپنی پسند کا آپشن ٹیپ کریں",
     not_found_title: "پروڈکٹ نہیں ملا",
     not_found_sub: "براہ کرم دوبارہ کوشش کریں",
     error_title: "خرابی",
@@ -45,6 +47,7 @@
     reconnect_sub:
       "دکاندار کو Shopify ایڈمن میں Aawaz Order ایپ کھولنی ہوگی۔",
     product_label: "پروڈکٹ",
+    variant_label: "سائز / رنگ",
     qty_label: "مقدار",
     price_label: "قیمت",
     name_label: "نام",
@@ -160,6 +163,15 @@
       <div class="aawaz-btn-row">
         <button id="aawaz-retry-btn" class="aawaz-btn aawaz-btn-primary">${STR.retry_btn}</button>
       </div>
+    </div>
+
+    <!-- VARIANT SELECTION stage -->
+    <div class="aawaz-stage aawaz-hidden" id="aawaz-stage-select-variant">
+      <div class="aawaz-confirm-icon">🎨</div>
+      <h2>${STR.variant_title}</h2>
+      <p id="aawaz-variant-sub" class="aawaz-sub">${STR.variant_sub}</p>
+      <div id="aawaz-variant-list" class="aawaz-variant-list"></div>
+      <button id="aawaz-variant-voice-btn" class="aawaz-btn aawaz-btn-ghost">${STR.retry_btn}</button>
     </div>
 
     <!-- NOT FOUND stage -->
@@ -473,6 +485,9 @@
     formData.append("mime_type", uploadMime);
     formData.append("shop", CONFIG.shop);
     formData.append("language", CONFIG.language === "both" ? "ur" : CONFIG.language);
+    if (STATE.voiceOrderId) {
+      formData.append("voiceOrderId", STATE.voiceOrderId);
+    }
 
     try {
       const res = await fetch(CONFIG.apiUrl, {
@@ -513,6 +528,10 @@
         showMissingStage(data);
         break;
 
+      case "select_variant":
+        showVariantStage(data);
+        break;
+
       case "product_not_found":
         showNotFoundStage(data);
         break;
@@ -531,6 +550,10 @@
     const p = data.product;
     const price = p ? `Rs. ${parseFloat(p.price).toFixed(0)}` : "—";
     const qty = `${e.quantity} ${e.unit}`;
+    const variantLabel =
+      p && p.variantTitle && p.variantTitle !== "Default Title"
+        ? p.variantTitle
+        : null;
 
     confirmCard.innerHTML = `
       ${p && p.imageUrl
@@ -540,6 +563,12 @@
         <span class="aawaz-info-label">${STR.product_label}</span>
         <span class="aawaz-info-value">${p ? p.title : e.product_query_original}</span>
       </div>
+      ${variantLabel
+        ? `<div class="aawaz-info-row">
+        <span class="aawaz-info-label">${STR.variant_label}</span>
+        <span class="aawaz-info-value">${variantLabel}</span>
+      </div>`
+        : ""}
       <div class="aawaz-info-row">
         <span class="aawaz-info-label">${STR.qty_label}</span>
         <span class="aawaz-info-value">${qty}</span>
@@ -572,13 +601,85 @@
       customer_name: "نام",
       phone: "فون نمبر",
       full_address: "پتہ",
+      size: "سائز",
+      color: "رنگ",
+      Size: "سائز",
+      Color: "رنگ",
     };
     const missingText = (data.missing_fields || [])
       .map((f) => fieldLabels[f] || f)
       .join("، ");
     $("aawaz-missing-text").textContent =
       `براہ کرم ${missingText} بھی بتائیں۔`;
+    if (data.voiceOrderId) STATE.voiceOrderId = data.voiceOrderId;
     showStage("missing");
+  }
+
+  function showVariantStage(data) {
+    const list = $("aawaz-variant-list");
+    const variants = data.variants || [];
+    list.innerHTML = variants
+      .map((v) => {
+        const label =
+          v.selectedOptions && v.selectedOptions.length
+            ? v.selectedOptions
+                .filter((o) => o.name !== "Title")
+                .map((o) => o.value)
+                .join(" / ") || v.title
+            : v.title;
+        const price = `Rs. ${parseFloat(v.price).toFixed(0)}`;
+        return `<button type="button" class="aawaz-variant-chip" data-variant-id="${v.id}">
+          <span class="aawaz-variant-chip-label">${label}</span>
+          <span class="aawaz-variant-chip-price">${price}</span>
+        </button>`;
+      })
+      .join("");
+
+    list.querySelectorAll(".aawaz-variant-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectVariant(btn.getAttribute("data-variant-id"), data);
+      });
+    });
+
+    if (data.missing_options && data.missing_options.length) {
+      $("aawaz-variant-sub").textContent =
+        `براہ کرم ${data.missing_options.join(" / ")} منتخب کریں`;
+    }
+
+    showStage("select-variant");
+  }
+
+  async function selectVariant(variantId, data) {
+    if (!variantId || !data) return;
+    showStage("processing");
+
+    try {
+      const res = await fetch(CONFIG.apiUrl + "?action=select_variant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop: CONFIG.shop,
+          variantId,
+          productId: data.product.id,
+          extraction: data.extraction,
+          transcript: data.transcript,
+          voiceOrderId: data.voiceOrderId || STATE.voiceOrderId || null,
+        }),
+      });
+
+      const result = await res.json();
+      STATE.lastResult = result;
+      playAudio(result.audio);
+
+      if (!res.ok) {
+        showError(result.error || STR.error_sub);
+        return;
+      }
+
+      handleApiResponse(result);
+    } catch (err) {
+      showError("نیٹ ورک کی خرابی۔ دوبارہ کوشش کریں۔");
+    }
   }
 
   function showNotFoundStage(data) {
@@ -668,6 +769,11 @@
   // Cancel — back to idle
   $("aawaz-cancel-btn").addEventListener("click", () => {
     STATE.voiceOrderId = null;
+    showStage("idle");
+    micStatus.textContent = STR.hint;
+  });
+
+  $("aawaz-variant-voice-btn").addEventListener("click", () => {
     showStage("idle");
     micStatus.textContent = STR.hint;
   });

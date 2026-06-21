@@ -68,21 +68,33 @@ export default function Index() {
     return <Badge tone="attention">زیر التواء</Badge>;
   };
 
-  const rows = recentOrders.map((order) => [
-    <Text as="span" variant="bodyMd" fontWeight="semibold">
-      {order.customerName}
-    </Text>,
-    order.phone,
-    `${order.quantity} ${order.unit ?? ""} ${order.productTitle ?? order.productQuery}`,
-    order.city ?? "—",
-    statusBadge(order.status),
-    order.shopifyOrderName ?? "—",
-    new Date(order.createdAt).toLocaleDateString("ur-PK", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }),
-  ]);
+  const rows = recentOrders.map((order) => {
+    const variantPart = order.variantTitle ? ` (${order.variantTitle})` : "";
+    const orderLabel = order.shopifyOrderName ?? "—";
+    const orderLink = shopifyOrderAdminUrl(shop, order.shopifyOrderId);
+
+    return [
+      <Text as="span" variant="bodyMd" fontWeight="semibold">
+        {order.customerName}
+      </Text>,
+      order.phone,
+      `${order.quantity} ${order.unit ?? ""} ${order.productTitle ?? order.productQuery}${variantPart}`,
+      order.city ?? "—",
+      statusBadge(order.status),
+      orderLink ? (
+        <Button url={orderLink} external variant="plain">
+          {orderLabel}
+        </Button>
+      ) : (
+        orderLabel
+      ),
+      new Date(order.createdAt).toLocaleDateString("ur-PK", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+    ];
+  });
 
   return (
     <Page
@@ -286,6 +298,13 @@ export default function Index() {
       </Layout>
     </Page>
   );
+}
+
+function shopifyOrderAdminUrl(shop: string, orderGid: string | null) {
+  if (!orderGid) return null;
+  const numericId = orderGid.split("/").pop();
+  if (!numericId) return null;
+  return `https://${shop}/admin/orders/${numericId}`;
 }
 
 function StatCard({

@@ -47,9 +47,28 @@ export const UrduMessages = {
       customer_name: "نام",
       phone: "فون نمبر",
       full_address: "پتہ",
+      size: "سائز",
+      color: "رنگ",
+      Size: "سائز",
+      Color: "رنگ",
     };
     const fieldNames = fields.map((f) => fieldMap[f] ?? f).join("، ");
     return `براہ کرم ${fieldNames} بھی بتائیں تاکہ آرڈر مکمل ہو سکے۔`;
+  },
+
+  selectVariant: (options: string[]) => {
+    const labels = options
+      .map((o) => {
+        const map: Record<string, string> = {
+          size: "سائز",
+          color: "رنگ",
+          Size: "سائز",
+          Color: "رنگ",
+        };
+        return map[o] ?? o;
+      })
+      .join(" یا ");
+    return `براہ کرم ${labels} منتخب کریں یا آواز میں بتائیں۔`;
   },
 
   generalError: () =>

@@ -52,6 +52,7 @@ model VoiceOrder {
   productId      String?
   productTitle   String?
   variantId      String?
+  variantTitle   String?
   price          String?
   quantity       Int      @default(1)
   unit           String?
