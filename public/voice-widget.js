@@ -230,13 +230,23 @@
     const types = [
       "audio/webm;codecs=opus",
       "audio/webm",
-      "audio/ogg;codecs=opus",
       "audio/mp4",
+      "audio/mp4;codecs=mp4a",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
     ];
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) return { mimeType: type };
     }
     return {};
+  }
+
+  function extensionForMime(mimeType) {
+    if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "m4a";
+    if (mimeType.includes("ogg")) return "ogg";
+    if (mimeType.includes("wav")) return "wav";
+    if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "mp3";
+    return "webm";
   }
 
   // ── Send audio to API ─────────────────────────────────────────────────────
@@ -245,11 +255,7 @@
 
     const mimeType =
       STATE.mediaRecorder?.mimeType || "audio/webm";
-    const ext = mimeType.includes("ogg")
-      ? "ogg"
-      : mimeType.includes("mp4")
-        ? "mp4"
-        : "webm";
+    const ext = extensionForMime(mimeType);
 
     const blob = new Blob(STATE.audioChunks, { type: mimeType });
 
@@ -260,6 +266,7 @@
 
     const formData = new FormData();
     formData.append("audio", blob, `recording.${ext}`);
+    formData.append("mime_type", mimeType);
     formData.append("shop", CONFIG.shop);
     formData.append("language", CONFIG.language === "both" ? "ur" : CONFIG.language);
 

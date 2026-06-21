@@ -89,12 +89,20 @@ export async function action({ request }: ActionFunctionArgs) {
     const shop = formData.get("shop") as string;
     const language = (formData.get("language") as "ur" | "pa") ?? "ur";
     const audioFile = formData.get("audio") as File | null;
+    const mimeTypeField = formData.get("mime_type") as string | null;
 
     if (!shop) {
       return json({ error: "Missing shop domain" }, { status: 400, headers });
     }
     if (!audioFile) {
       return json({ error: "Missing audio file" }, { status: 400, headers });
+    }
+
+    if (audioFile.size < 1000) {
+      return json(
+        { error: "Audio recording too short. Please speak clearly and try again." },
+        { status: 422, headers },
+      );
     }
 
     // Get Shopify admin client using the stored offline session for this shop
@@ -111,8 +119,9 @@ export async function action({ request }: ActionFunctionArgs) {
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
     const { transcript } = await transcribeAudio(
       audioBuffer,
-      audioFile.name || "audio.webm",
-      language
+      audioFile.name || "recording.webm",
+      language,
+      mimeTypeField || audioFile.type || undefined,
     );
     logStep("whisper done");
 
@@ -246,13 +255,14 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   } catch (err) {
     console.error("[voice-order] Error:", err);
+    const message =
+      err instanceof Error && err.message.includes("Invalid file format")
+        ? "Invalid audio format from your browser. Please try again or use Chrome."
+        : "Internal server error";
     const audio = await textToSpeechUrdu(UrduMessages.generalError()).catch(
-      () => ""
+      () => "",
     );
-    return json(
-      { error: "Internal server error", audio },
-      { status: 500, headers }
-    );
+    return json({ error: message, audio }, { status: 500, headers });
   }
 }
 
