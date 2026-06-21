@@ -19,6 +19,14 @@ const shopify = shopifyApp({
     connectionRetryIntervalMs: 3000,
   }),
   distribution: AppDistribution.AppStore,
+  hooks: {
+    afterAuth: async ({ session }) => {
+      await shopify.registerWebhooks({ session });
+      console.log(
+        `[auth] afterAuth shop=${session.shop} id=${session.id} online=${session.isOnline}`,
+      );
+    },
+  },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
   },

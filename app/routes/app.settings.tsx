@@ -23,7 +23,11 @@ import { useState, useCallback } from "react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { themeAppEmbedUrl } from "../utils/theme-embed.server";
-import { verifyShopConnection } from "../services/shopify-admin.server";
+import {
+  verifyAdminConnection,
+  verifyStorefrontConnection,
+  healShopSessions,
+} from "../services/shopify-admin.server";
 
 const LANGUAGE_OPTIONS = [
   { label: "اردو — Urdu", value: "ur" },
@@ -41,15 +45,19 @@ const COLOR_PRESETS = [
 ];
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
 
+  await healShopSessions(shop);
+
   const settings = await db.appSettings.findUnique({ where: { shop } });
-  const connection = await verifyShopConnection(shop);
+  const adminConnection = await verifyAdminConnection(admin);
+  const storefrontConnection = await verifyStorefrontConnection(shop);
 
   return json({
     shop,
-    connection,
+    connection: adminConnection,
+    storefrontConnection,
     appUrl: process.env.SHOPIFY_APP_URL ?? "",
     themeEmbedUrl: themeAppEmbedUrl(
       shop,
@@ -84,7 +92,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function Settings() {
-  const { settings, appUrl, shop, themeEmbedUrl, connection } =
+  const { settings, appUrl, shop, themeEmbedUrl, connection, storefrontConnection } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
@@ -142,17 +150,52 @@ export default function Settings() {
 
         {!connection.ok && (
           <Layout.Section>
-            <Banner tone="critical" title="Store connection required">
+            <Banner tone="critical" title="App connection issue">
               <Text as="p">
-                Voice orders cannot reach your Shopify catalog until the app is
-                reconnected. Open this settings page from Shopify Admin (reload
-                if needed) or reinstall the app on your store.
+                Could not verify your Shopify admin session. Reload this page
+                from Shopify Admin.
               </Text>
               {connection.error && (
                 <Text as="p" tone="subdued">
                   {connection.error}
                 </Text>
               )}
+            </Banner>
+          </Layout.Section>
+        )}
+
+        {connection.ok && !storefrontConnection.ok && (
+          <Layout.Section>
+            <Banner tone="warning" title="Storefront voice orders need reconnect">
+              <Text as="p">
+                The admin app is connected, but the stored token for customer
+                voice orders is invalid (common after reinstall). Click below,
+                then reload this page.
+              </Text>
+              {storefrontConnection.error && (
+                <Text as="p" tone="subdued">
+                  {storefrontConnection.error}
+                </Text>
+              )}
+              <Box paddingBlockStart="200">
+                <Button url={`/auth/login?shop=${shop}`} external>
+                  Reconnect store
+                </Button>
+              </Box>
+            </Banner>
+          </Layout.Section>
+        )}
+
+        {connection.ok && storefrontConnection.ok && (
+          <Layout.Section>
+            <Banner tone="success" title="Store connected">
+              <Text as="p">
+                Voice orders are ready
+                {storefrontConnection.shopName
+                  ? ` for ${storefrontConnection.shopName}`
+                  : ""}
+                .
+              </Text>
             </Banner>
           </Layout.Section>
         )}
