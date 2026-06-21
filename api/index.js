@@ -1,5 +1,9 @@
-// Vercel serverless function — Remix SSR entry (Web Fetch API)
-const { createRequestHandler } = require("@remix-run/node");
+// Vercel serverless function — Remix SSR entry
+const {
+  createRequestHandler,
+  createReadableStreamFromReadable,
+  writeReadableStreamToWritable,
+} = require("@remix-run/node");
 const { pathToFileURL } = require("url");
 const path = require("path");
 
@@ -20,12 +24,54 @@ async function getHandler() {
   return remixHandler;
 }
 
-module.exports = async (request) => {
+function createWebRequest(req) {
+  const host =
+    req.headers.host || req.headers["x-forwarded-host"] || "localhost";
+  const protocol = (req.headers["x-forwarded-proto"] || "https")
+    .split(",")[0]
+    .trim();
+  const url = new URL(req.url, `${protocol}://${host}`);
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value == null) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(key, item);
+    } else {
+      headers.set(key, value);
+    }
+  }
+
+  const init = { method: req.method, headers };
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    init.body = createReadableStreamFromReadable(req);
+    init.duplex = "half";
+  }
+
+  return new Request(url.href, init);
+}
+
+async function sendWebResponse(res, webResponse) {
+  res.statusCode = webResponse.status;
+  for (const [key, value] of webResponse.headers.entries()) {
+    res.setHeader(key, value);
+  }
+  if (webResponse.body) {
+    await writeReadableStreamToWritable(webResponse.body, res);
+  } else {
+    res.end();
+  }
+}
+
+module.exports = async (req, res) => {
   try {
     const handler = await getHandler();
-    return await handler(request);
+    const request = createWebRequest(req);
+    const response = await handler(request);
+    await sendWebResponse(res, response);
   } catch (err) {
     console.error("[AawazOrder] Server error:", err);
-    return new Response("Internal Server Error", { status: 500 });
+    res.statusCode = 500;
+    res.end("Internal Server Error");
   }
 };
