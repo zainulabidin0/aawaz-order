@@ -53,9 +53,22 @@ function createWebRequest(req) {
 
 async function sendWebResponse(res, webResponse) {
   res.statusCode = webResponse.status;
+
   for (const [key, value] of webResponse.headers.entries()) {
+    if (key.toLowerCase() === "set-cookie") continue;
     res.setHeader(key, value);
   }
+
+  // Vercel/Node drops OAuth cookies if multiple Set-Cookie headers are merged.
+  if (typeof webResponse.headers.getSetCookie === "function") {
+    for (const cookie of webResponse.headers.getSetCookie()) {
+      res.appendHeader("Set-Cookie", cookie);
+    }
+  } else {
+    const setCookie = webResponse.headers.get("set-cookie");
+    if (setCookie) res.setHeader("Set-Cookie", setCookie);
+  }
+
   if (webResponse.body) {
     await writeReadableStreamToWritable(webResponse.body, res);
   } else {

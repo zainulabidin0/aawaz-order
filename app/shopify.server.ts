@@ -19,6 +19,9 @@ const shopify = shopifyApp({
     connectionRetryIntervalMs: 3000,
   }),
   distribution: AppDistribution.AppStore,
+  future: {
+    unstable_newEmbeddedAuthStrategy: true,
+  },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),

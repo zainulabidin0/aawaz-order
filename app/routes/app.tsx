@@ -4,17 +4,19 @@ import {
   Outlet,
   useLoaderData,
   useRouteError,
-  useRouteLoaderData,
 } from "@remix-run/react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
+import { AppProvider as PolarisAppProvider } from "@shopify/polaris";
+import polarisTranslations from "@shopify/polaris/locales/en.json";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+import { authenticate } from "../shopify.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
-export const loader = async (_args: LoaderFunctionArgs) => {
-  // Always return apiKey so App Bridge loads before child auth runs.
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.admin(request);
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
@@ -23,27 +25,21 @@ export default function App() {
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
-      <NavMenu>
-        <Link to="/app" rel="home">
-          Dashboard
-        </Link>
-        <Link to="/app/settings">Settings</Link>
-      </NavMenu>
-      <Outlet />
+      <PolarisAppProvider i18n={polarisTranslations}>
+        <NavMenu>
+          <Link to="/app" rel="home">
+            Dashboard
+          </Link>
+          <Link to="/app/settings">Settings</Link>
+        </NavMenu>
+        <Outlet />
+      </PolarisAppProvider>
     </AppProvider>
   );
 }
 
 export function ErrorBoundary() {
-  const error = useRouteError();
-  const data = useRouteLoaderData("routes/app") as { apiKey: string } | undefined;
-  const apiKey = data?.apiKey ?? "";
-
-  return (
-    <AppProvider isEmbeddedApp apiKey={apiKey}>
-      {boundary.error(error)}
-    </AppProvider>
-  );
+  return boundary.error(useRouteError());
 }
 
 export const headers: HeadersFunction = (headersArgs) => {
