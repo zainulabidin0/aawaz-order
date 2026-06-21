@@ -5,6 +5,7 @@
 {% endcomment %}
 
 {% if block.settings.enabled %}
+{% assign aawaz_app_base = block.settings.api_url | split: '/api/voice-order' | first %}
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link
   href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap"
@@ -20,13 +21,14 @@
   data-position="{{ block.settings.position }}"
   style="display:none"
 ></div>
+
+<script src="{{ aawaz_app_base }}/voice-widget.js" defer></script>
 {% endif %}
 
 {% schema %}
 {
   "name": "Aawaz Order Widget",
   "target": "body",
-  "javascript": "voice-widget.js",
   "stylesheet": "voice-widget.css",
   "settings": [
     {

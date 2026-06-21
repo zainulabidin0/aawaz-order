@@ -1,5 +1,5 @@
 name = "Aawaz Order"
-client_id = "{{ SHOPIFY_API_KEY }}"
+client_id = "ef0a177de62447a4f716403a40418b6c"
 application_url = "https://aawaz-order.vercel.app"
 embedded = true
 
@@ -16,18 +16,18 @@ redirect_urls = [
 ]
 
 [webhooks]
-api_version = "2024-01"
+api_version = "2024-10"
 
   [[webhooks.subscriptions]]
-  topics = ["customers/redact"]
+  compliance_topics = ["customers/data_request"]
   uri = "/webhooks"
 
   [[webhooks.subscriptions]]
-  topics = ["shop/redact"]
+  compliance_topics = ["customers/redact"]
   uri = "/webhooks"
 
   [[webhooks.subscriptions]]
-  topics = ["customers/data_request"]
+  compliance_topics = ["shop/redact"]
   uri = "/webhooks"
 
 [pos]
