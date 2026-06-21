@@ -1,0 +1,361 @@
+/**
+ * POST /api/voice-order
+ *
+ * Public endpoint called from the storefront Theme App Extension widget.
+ * Orchestrates the full pipeline:
+ *   audio → Whisper STT → GPT-4o extract → Shopify product search
+ *   → create draft order → TTS confirmation audio
+ *
+ * POST /api/voice-order?action=confirm
+ * Confirms a pending voice order (creates the Shopify order from the draft).
+ */
+
+import type { ActionFunctionArgs } from "@remix-run/node";
+import {
+  json,
+  unstable_createMemoryUploadHandler,
+  unstable_parseMultipartFormData,
+} from "@remix-run/node";
+import { unauthenticated } from "../shopify.server";
+import db from "../db.server";
+import { transcribeAudio } from "../services/whisper.server";
+import {
+  extractOrderDetails,
+  buildConfirmationUrdu,
+  buildShopifyAddress,
+} from "../services/gpt-extract.server";
+import { searchProducts } from "../services/shopify-products.server";
+import { createDraftOrder } from "../services/shopify-orders.server";
+import { textToSpeechUrdu, UrduMessages } from "../services/tts.server";
+
+// CORS headers — allow requests from any Shopify storefront domain
+function corsHeaders(origin: string) {
+  const isShopify =
+    origin.endsWith(".myshopify.com") ||
+    origin.endsWith(".shopify.com") ||
+    origin === "";
+
+  return {
+    "Access-Control-Allow-Origin": isShopify ? origin : "",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400",
+  };
+}
+
+// Handle CORS preflight
+export async function loader({ request }: ActionFunctionArgs) {
+  const origin = request.headers.get("Origin") ?? "";
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders(origin),
+  });
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const origin = request.headers.get("Origin") ?? "";
+  const headers = corsHeaders(origin);
+
+  try {
+    const url = new URL(request.url);
+    const actionType = url.searchParams.get("action");
+
+    // ── Confirm flow: customer tapped "Confirm Order" ──────────────────────
+    if (actionType === "confirm") {
+      return handleConfirm(request, headers);
+    }
+
+    // ── Voice capture flow ─────────────────────────────────────────────────
+    const uploadHandler = unstable_createMemoryUploadHandler({
+      maxPartSize: 15_000_000, // 15 MB max audio
+    });
+
+    const formData = await unstable_parseMultipartFormData(
+      request,
+      uploadHandler
+    );
+
+    const shop = formData.get("shop") as string;
+    const language = (formData.get("language") as "ur" | "pa") ?? "ur";
+    const audioFile = formData.get("audio") as File | null;
+
+    if (!shop) {
+      return json({ error: "Missing shop domain" }, { status: 400, headers });
+    }
+    if (!audioFile) {
+      return json({ error: "Missing audio file" }, { status: 400, headers });
+    }
+
+    // Get Shopify admin client using the stored offline session for this shop
+    const { admin } = await unauthenticated.admin(shop);
+
+    // Load app settings for this shop
+    const settings = await db.appSettings.findUnique({ where: { shop } });
+    if (settings && !settings.enabled) {
+      return json({ error: "Widget is disabled" }, { status: 403, headers });
+    }
+
+    // ── Step 1: Transcribe audio with Whisper ──────────────────────────────
+    const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
+    const { transcript } = await transcribeAudio(
+      audioBuffer,
+      audioFile.name || "audio.webm",
+      language
+    );
+
+    if (!transcript.trim()) {
+      const audio = await textToSpeechUrdu(UrduMessages.generalError());
+      return json(
+        { error: "Could not transcribe audio", transcript: "", audio },
+        { status: 422, headers }
+      );
+    }
+
+    // ── Step 2: Extract order details with GPT-4o ──────────────────────────
+    const extraction = await extractOrderDetails(transcript);
+
+    // ── Step 3: Search Shopify product catalog ─────────────────────────────
+    const products = await searchProducts(admin, extraction.product_query, 5);
+
+    if (products.length === 0) {
+      const audio = await textToSpeechUrdu(
+        UrduMessages.productNotFound(extraction.product_query_original)
+      );
+      return json(
+        {
+          stage: "product_not_found",
+          transcript,
+          extraction,
+          audio,
+        },
+        { status: 200, headers }
+      );
+    }
+
+    // Pick the best match (first active, available product)
+    const product =
+      products.find((p) => p.availableForSale) ?? products[0];
+
+    // ── Step 4: Check for missing required fields ───────────────────────────
+    const requiredFields = ["customer_name", "phone", "full_address"];
+    const missing = requiredFields.filter(
+      (f) =>
+        extraction.missing_fields.includes(f) ||
+        !extraction[f as keyof typeof extraction]
+    );
+
+    if (missing.length > 0) {
+      const audio = await textToSpeechUrdu(UrduMessages.missingInfo(missing));
+      return json(
+        {
+          stage: "missing_info",
+          transcript,
+          extraction,
+          product,
+          missing_fields: missing,
+          audio,
+        },
+        { status: 200, headers }
+      );
+    }
+
+    // ── Step 5: Save pending voice order record ────────────────────────────
+    const price = `Rs. ${parseFloat(product.price).toFixed(0)}`;
+    const confirmationText = buildConfirmationUrdu(
+      extraction,
+      product.title,
+      price
+    );
+
+    const voiceOrder = await db.voiceOrder.create({
+      data: {
+        shop,
+        transcript,
+        productQuery: extraction.product_query,
+        productId: product.id,
+        productTitle: product.title,
+        variantId: product.variantId,
+        price: product.price,
+        quantity: extraction.quantity,
+        unit: extraction.unit,
+        customerName: extraction.customer_name,
+        phone: extraction.phone,
+        fullAddress: extraction.full_address,
+        city: extraction.city,
+        area: extraction.area,
+        status: "pending",
+        missingFields: JSON.stringify(missing),
+      },
+    });
+
+    // ── Step 6: Generate TTS confirmation audio ────────────────────────────
+    const audio = await textToSpeechUrdu(confirmationText);
+
+    // If auto-confirm is enabled, create the draft order immediately
+    if (settings?.autoConfirm) {
+      const result = await createOrderForVoiceOrder(admin, voiceOrder.id, extraction, product);
+      const successAudio = await textToSpeechUrdu(
+        UrduMessages.orderPlaced(product.title, result.orderName)
+      );
+      return json(
+        {
+          stage: "order_placed",
+          voiceOrderId: voiceOrder.id,
+          transcript,
+          extraction,
+          product,
+          order: result,
+          audio: successAudio,
+        },
+        { status: 200, headers }
+      );
+    }
+
+    // Return confirmation screen data (customer must tap "Confirm")
+    return json(
+      {
+        stage: "confirm",
+        voiceOrderId: voiceOrder.id,
+        transcript,
+        extraction,
+        product,
+        confirmationText,
+        audio,
+      },
+      { status: 200, headers }
+    );
+  } catch (err) {
+    console.error("[voice-order] Error:", err);
+    const audio = await textToSpeechUrdu(UrduMessages.generalError()).catch(
+      () => ""
+    );
+    return json(
+      { error: "Internal server error", audio },
+      { status: 500, headers }
+    );
+  }
+}
+
+// ── Confirm handler ──────────────────────────────────────────────────────────
+
+async function handleConfirm(
+  request: Request,
+  headers: Record<string, string>
+) {
+  const body = await request.json() as { voiceOrderId: string; shop: string };
+  const { voiceOrderId, shop } = body;
+
+  if (!voiceOrderId || !shop) {
+    return json({ error: "Missing voiceOrderId or shop" }, { status: 400, headers });
+  }
+
+  const voiceOrder = await db.voiceOrder.findUnique({
+    where: { id: voiceOrderId },
+  });
+
+  if (!voiceOrder || voiceOrder.shop !== shop) {
+    return json({ error: "Voice order not found" }, { status: 404, headers });
+  }
+  if (voiceOrder.status !== "pending") {
+    return json({ error: "Order already processed" }, { status: 409, headers });
+  }
+
+  const { admin } = await unauthenticated.admin(shop);
+
+  const extraction = {
+    customer_name: voiceOrder.customerName,
+    phone: voiceOrder.phone,
+    full_address: voiceOrder.fullAddress,
+    city: voiceOrder.city ?? "",
+    area: voiceOrder.area ?? "",
+    street: "",
+    quantity: voiceOrder.quantity,
+    unit: voiceOrder.unit ?? "piece",
+    product_query: voiceOrder.productQuery,
+    product_query_original: voiceOrder.productQuery,
+    missing_fields: [] as string[],
+    confidence: 1,
+    response_urdu: "",
+  };
+
+  const product = {
+    id: voiceOrder.productId ?? "",
+    title: voiceOrder.productTitle ?? "",
+    handle: "",
+    status: "ACTIVE",
+    imageUrl: null,
+    variantId: voiceOrder.variantId ?? "",
+    variantTitle: "",
+    price: voiceOrder.price ?? "0.00",
+    availableForSale: true,
+  };
+
+  const result = await createOrderForVoiceOrder(
+    admin,
+    voiceOrder.id,
+    extraction,
+    product
+  );
+
+  const audio = await textToSpeechUrdu(
+    UrduMessages.orderPlaced(product.title, result.orderName)
+  );
+
+  return json(
+    { stage: "order_placed", order: result, audio },
+    { status: 200, headers }
+  );
+}
+
+// ── Shared: create Shopify draft order and update DB record ─────────────────
+
+type ExtractionLike = {
+  customer_name: string;
+  phone: string;
+  full_address: string;
+  city: string;
+  area: string;
+  street: string;
+  quantity: number;
+  unit: string;
+  product_query: string;
+  product_query_original: string;
+  missing_fields: string[];
+  confidence: number;
+  response_urdu: string;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function createOrderForVoiceOrder(
+  admin: any,
+  voiceOrderId: string,
+  extraction: ExtractionLike,
+  product: { variantId: string; title: string; price: string }
+) {
+  const address = buildShopifyAddress(extraction);
+  const note = `آواز آرڈر | Aawaz Order\nPhone: ${extraction.phone}\nAddress: ${extraction.full_address}`;
+
+  const draftOrder = await createDraftOrder(admin, {
+    variantId: product.variantId,
+    quantity: extraction.quantity,
+    customerName: extraction.customer_name,
+    phone: extraction.phone,
+    address1: address.address1,
+    city: address.city,
+    country: "Pakistan",
+    countryCode: "PK",
+    note,
+  });
+
+  // Mark the settings-configured auto-confirm stores: complete the draft
+  await db.voiceOrder.update({
+    where: { id: voiceOrderId },
+    data: {
+      shopifyOrderId: draftOrder.id,
+      shopifyOrderName: draftOrder.name,
+      status: "confirmed",
+    },
+  });
+
+  return { orderId: draftOrder.id, orderName: draftOrder.name };
+}

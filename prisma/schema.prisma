@@ -1,0 +1,69 @@
+// Prisma schema for Aawaz Order Shopify app
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Required by @shopify/shopify-app-session-storage-prisma
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+// Per-shop widget settings
+model AppSettings {
+  id          String   @id @default(cuid())
+  shop        String   @unique
+  language    String   @default("ur")
+  widgetColor String   @default("#16a34a")
+  autoConfirm Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Voice orders placed by customers
+model VoiceOrder {
+  id             String   @id @default(cuid())
+  shop           String
+  transcript     String
+  productQuery   String
+  productId      String?
+  productTitle   String?
+  variantId      String?
+  price          String?
+  quantity       Int      @default(1)
+  unit           String?
+  customerName   String
+  phone          String
+  fullAddress    String
+  city           String?
+  area           String?
+  shopifyOrderId String?
+  shopifyOrderName String?
+  status         String   @default("pending") // pending | confirmed | cancelled
+  missingFields  String?  // JSON array of missing fields
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([shop])
+  @@index([status])
+}

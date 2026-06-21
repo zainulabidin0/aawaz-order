@@ -1,0 +1,6 @@
+api_version = "2024-01"
+
+[[extensions]]
+type = "theme_app_extension"
+name = "Aawaz Order Widget"
+handle = "voice-order-widget"

@@ -1,0 +1,367 @@
+/* ── CSS custom properties (set by JS from block settings) ────────────────── */
+:root {
+  --aawaz-color: #16a34a;
+  --aawaz-color-dark: #15803d;
+  --aawaz-font: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', serif;
+  --aawaz-radius: 16px;
+  --aawaz-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  --aawaz-z: 2147483640;
+}
+
+/* ── FAB (floating action button) ────────────────────────────────────────── */
+#aawaz-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 20px;
+  z-index: var(--aawaz-z);
+  background: var(--aawaz-color);
+  color: #fff;
+  border-radius: 56px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: var(--aawaz-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  font-family: var(--aawaz-font);
+  font-size: 15px;
+  font-weight: 600;
+  direction: rtl;
+  border: none;
+  outline: none;
+}
+
+#aawaz-fab:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  background: var(--aawaz-color-dark);
+}
+
+#aawaz-fab:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+#aawaz-fab svg {
+  flex-shrink: 0;
+}
+
+/* ── Overlay ─────────────────────────────────────────────────────────────── */
+#aawaz-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: var(--aawaz-z);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  padding: 0 0 0 0;
+  backdrop-filter: blur(3px);
+}
+
+#aawaz-overlay.aawaz-active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+#aawaz-modal {
+  background: #fff;
+  border-radius: var(--aawaz-radius) var(--aawaz-radius) 0 0;
+  width: 100%;
+  max-width: 480px;
+  padding: 32px 28px 40px;
+  position: relative;
+  direction: rtl;
+  font-family: var(--aawaz-font);
+  transform: translateY(60px);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+#aawaz-overlay.aawaz-active #aawaz-modal {
+  transform: translateY(0);
+}
+
+/* Close button */
+#aawaz-close {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+#aawaz-close:hover {
+  background: #f3f4f6;
+  color: #111;
+}
+
+/* ── Stage helpers ───────────────────────────────────────────────────────── */
+.aawaz-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  animation: aawazFadeIn 0.2s ease;
+}
+
+.aawaz-hidden {
+  display: none !important;
+}
+
+@keyframes aawazFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+#aawaz-modal h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  line-height: 1.4;
+  font-family: var(--aawaz-font);
+}
+
+.aawaz-sub {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.6;
+  font-family: var(--aawaz-font);
+}
+
+.aawaz-hint {
+  font-size: 13px;
+  color: #9ca3af;
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 10px 14px;
+  width: 100%;
+  text-align: right;
+  line-height: 1.7;
+  font-family: var(--aawaz-font);
+}
+
+/* ── Mic button ──────────────────────────────────────────────────────────── */
+.aawaz-mic-btn {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--aawaz-color);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+  touch-action: none;
+}
+
+.aawaz-mic-btn:hover {
+  transform: scale(1.06);
+}
+
+.aawaz-mic-btn:active,
+.aawaz-mic-btn.aawaz-recording {
+  transform: scale(0.95);
+  background: #dc2626;
+  box-shadow: 0 0 0 12px rgba(220, 38, 38, 0.2), 0 0 0 24px rgba(220, 38, 38, 0.08);
+  animation: aawazPulse 1.2s infinite;
+}
+
+@keyframes aawazPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(220,38,38,0.4); }
+  70%  { box-shadow: 0 0 0 18px rgba(220,38,38,0); }
+  100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+}
+
+/* ── Spinner (processing) ────────────────────────────────────────────────── */
+.aawaz-spinner {
+  width: 52px;
+  height: 52px;
+  border: 5px solid #e5e7eb;
+  border-top-color: var(--aawaz-color);
+  border-radius: 50%;
+  animation: aawazSpin 0.8s linear infinite;
+}
+
+@keyframes aawazSpin {
+  to { transform: rotate(360deg); }
+}
+
+.aawaz-processing-text {
+  font-size: 16px;
+  color: #374151;
+  font-family: var(--aawaz-font);
+  font-weight: 600;
+}
+
+/* ── Icons ───────────────────────────────────────────────────────────────── */
+.aawaz-logo,
+.aawaz-confirm-icon,
+.aawaz-success-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+/* ── Info card (confirm stage) ───────────────────────────────────────────── */
+.aawaz-info-card {
+  width: 100%;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: right;
+}
+
+.aawaz-product-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.aawaz-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 0;
+  gap: 8px;
+}
+
+.aawaz-info-label {
+  font-size: 13px;
+  color: #9ca3af;
+  white-space: nowrap;
+  font-family: var(--aawaz-font);
+}
+
+.aawaz-info-value {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 600;
+  text-align: right;
+  font-family: var(--aawaz-font);
+}
+
+.aawaz-price {
+  color: var(--aawaz-color);
+  font-size: 16px;
+}
+
+.aawaz-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 8px 0;
+  width: 100%;
+}
+
+/* ── Order number (success) ──────────────────────────────────────────────── */
+.aawaz-order-num {
+  font-size: 15px;
+  color: var(--aawaz-color);
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  background: #f0fdf4;
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.aawaz-btn-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.aawaz-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  font-family: var(--aawaz-font);
+  min-width: 130px;
+}
+
+.aawaz-btn:active {
+  transform: scale(0.97);
+}
+
+.aawaz-btn-primary {
+  background: var(--aawaz-color);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+}
+
+.aawaz-btn-primary:hover {
+  background: var(--aawaz-color-dark);
+}
+
+.aawaz-btn-ghost {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.aawaz-btn-ghost:hover {
+  background: #e5e7eb;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (min-width: 640px) {
+  #aawaz-overlay {
+    align-items: center;
+    padding: 20px;
+  }
+
+  #aawaz-modal {
+    border-radius: var(--aawaz-radius);
+    max-height: 85vh;
+  }
+}
+
+@media (max-width: 400px) {
+  #aawaz-fab #aawaz-fab-label {
+    display: none;
+  }
+
+  #aawaz-fab {
+    padding: 16px;
+    border-radius: 50%;
+  }
+}
+
+/* ── High contrast / accessibility ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .aawaz-mic-btn.aawaz-recording,
+  .aawaz-spinner {
+    animation: none;
+  }
+}

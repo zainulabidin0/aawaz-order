@@ -1,0 +1,49 @@
+{
+  "name": "aawaz-order",
+  "private": true,
+  "scripts": {
+    "build": "remix vite:build",
+    "dev": "shopify app dev",
+    "config:link": "shopify app config link",
+    "generate": "shopify app generate",
+    "deploy": "shopify app deploy",
+    "config:use": "shopify app config use",
+    "env": "shopify app env",
+    "start": "remix-serve ./build/server/index.js",
+    "setup": "prisma generate && prisma migrate deploy",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "shopify": "shopify",
+    "prisma": "prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.17.0",
+    "@remix-run/node": "^2.10.3",
+    "@remix-run/react": "^2.10.3",
+    "@remix-run/serve": "^2.10.3",
+    "@shopify/app-bridge-react": "^4.1.6",
+    "@shopify/polaris": "^13.9.5",
+    "@shopify/shopify-app-remix": "^3.3.2",
+    "@shopify/shopify-app-session-storage-prisma": "^5.0.7",
+    "estree-util-value-to-estree": "^3.5.0",
+    "isbot": "^4.4.0",
+    "openai": "^4.57.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "^2.10.3",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "prisma": "^5.17.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "workspaces": [
+    "extensions/*"
+  ],
+  "engines": {
+    "node": ">=18.20.0"
+  }
+}

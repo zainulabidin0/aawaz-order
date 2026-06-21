@@ -1,0 +1,73 @@
+{% comment %}
+  Aawaz Order — Voice ordering widget for Pakistani customers.
+  This App Embed block injects a floating mic button on every storefront page.
+  Merchants enable it from: Theme Editor → App embeds → Aawaz Order Widget.
+{% endcomment %}
+
+{% if block.settings.enabled %}
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap"
+  rel="stylesheet"
+/>
+
+<div
+  id="aawaz-order-root"
+  data-shop="{{ shop.permanent_domain }}"
+  data-language="{{ block.settings.language }}"
+  data-color="{{ block.settings.primary_color }}"
+  data-api-url="{{ block.settings.api_url }}"
+  data-position="{{ block.settings.position }}"
+  style="display:none"
+></div>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Aawaz Order Widget",
+  "target": "body",
+  "javascript": "voice-widget.js",
+  "stylesheet": "voice-widget.css",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable voice ordering widget",
+      "default": true
+    },
+    {
+      "type": "url",
+      "id": "api_url",
+      "label": "App API URL",
+      "info": "Your Aawaz Order app URL, e.g. https://your-app.fly.dev/api/voice-order. Find this in the app Settings page."
+    },
+    {
+      "type": "select",
+      "id": "language",
+      "label": "Voice language",
+      "options": [
+        { "value": "ur", "label": "اردو — Urdu" },
+        { "value": "pa", "label": "پنجابی — Punjabi" },
+        { "value": "both", "label": "اردو + پنجابی — Both" }
+      ],
+      "default": "ur"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Widget button color",
+      "default": "#16a34a"
+    },
+    {
+      "type": "select",
+      "id": "position",
+      "label": "Button position",
+      "options": [
+        { "value": "bottom-right", "label": "Bottom Right (default)" },
+        { "value": "bottom-left", "label": "Bottom Left" }
+      ],
+      "default": "bottom-right"
+    }
+  ]
+}
+{% endschema %}
