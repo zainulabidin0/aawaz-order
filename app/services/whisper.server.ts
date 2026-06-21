@@ -117,19 +117,38 @@ export async function transcribeAudio(
     type: resolved.mimeType,
   });
 
-  const response = await client.audio.transcriptions.create({
-    file: audioFile,
-    model: "whisper-1",
-    language: language ?? "ur",
-    response_format: "text",
-    prompt:
-      "یہ ایک پاکستانی گاہک کا آرڈر ہے۔ گاہک اردو یا پنجابی میں بول رہا ہے۔ آرڈر میں پروڈکٹ کا نام، مقدار، نام، فون نمبر اور پتہ شامل ہو سکتا ہے۔",
-  });
+  const prompt =
+    "یہ ایک پاکستانی گاہک کا آرڈر ہے۔ گاہک اردو یا پنجابی میں بول رہا ہے۔ آرڈر میں پروڈکٹ کا نام، مقدار، نام، فون نمبر اور پتہ شامل ہو سکتا ہے۔";
 
-  const transcript = typeof response === "string" ? response : "";
+  const models = ["whisper-1", "gpt-4o-mini-transcribe"] as const;
+  let lastError: unknown;
 
-  return {
-    transcript,
-    language: language ?? "ur",
-  };
+  for (const model of models) {
+    try {
+      const response = await client.audio.transcriptions.create({
+        file: audioFile,
+        model,
+        language: language ?? "ur",
+        response_format: "text",
+        prompt,
+      });
+
+      const transcript = typeof response === "string" ? response : "";
+      console.log(`[whisper] success with ${model}`);
+
+      return {
+        transcript,
+        language: language ?? "ur",
+      };
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[whisper] ${model} failed: ${message}`);
+      if (!message.includes("Invalid file format")) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError;
 }

@@ -220,7 +220,12 @@
   }
 
   function stopRecording() {
-    if (STATE.mediaRecorder && STATE.mediaRecorder.state !== "inactive") {
+    if (STATE.mediaRecorder && STATE.mediaRecorder.state === "recording") {
+      try {
+        STATE.mediaRecorder.requestData();
+      } catch (_) {
+        /* ignore */
+      }
       STATE.mediaRecorder.stop();
     }
     micBtn.classList.remove("aawaz-recording");
@@ -249,24 +254,86 @@
     return "webm";
   }
 
+  /** Encode AudioBuffer as 16-bit PCM WAV — Whisper accepts this reliably. */
+  function audioBufferToWavBlob(audioBuffer) {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const bytesPerSample = 2;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataLength = audioBuffer.length * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+
+    function writeString(offset, str) {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    }
+
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + dataLength, true);
+    writeString(8, "WAVE");
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+    writeString(36, "data");
+    view.setUint32(40, dataLength, true);
+
+    let offset = 44;
+    for (let i = 0; i < audioBuffer.length; i++) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const sample = Math.max(-1, Math.min(1, audioBuffer.getChannelData(ch)[i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  /** Decode browser recording and re-encode as WAV for OpenAI compatibility. */
+  async function toWhisperCompatibleBlob(blob) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return blob;
+
+      const ctx = new AudioCtx();
+      const arrayBuffer = await blob.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+      await ctx.close();
+      return audioBufferToWavBlob(audioBuffer);
+    } catch (err) {
+      console.warn("[AawazOrder] WAV conversion failed, using original blob", err);
+      return blob;
+    }
+  }
+
   // ── Send audio to API ─────────────────────────────────────────────────────
   async function sendAudio() {
     showStage("processing");
 
-    const mimeType =
-      STATE.mediaRecorder?.mimeType || "audio/webm";
-    const ext = extensionForMime(mimeType);
+    const mimeType = STATE.mediaRecorder?.mimeType || "audio/webm";
+    const rawBlob = new Blob(STATE.audioChunks, {
+      type: STATE.audioChunks[0]?.type || mimeType,
+    });
 
-    const blob = new Blob(STATE.audioChunks, { type: mimeType });
-
-    if (blob.size < 1000) {
+    if (rawBlob.size < 1000) {
       showError("آواز بہت چھوٹی ہے۔ براہ کرم واضح آواز میں بولیں۔");
       return;
     }
 
+    const uploadBlob = await toWhisperCompatibleBlob(rawBlob);
+    const uploadMime = uploadBlob.type || "audio/wav";
+    const ext = extensionForMime(uploadMime);
+
     const formData = new FormData();
-    formData.append("audio", blob, `recording.${ext}`);
-    formData.append("mime_type", mimeType);
+    formData.append("audio", uploadBlob, `recording.${ext}`);
+    formData.append("mime_type", uploadMime);
     formData.append("shop", CONFIG.shop);
     formData.append("language", CONFIG.language === "both" ? "ur" : CONFIG.language);
 
