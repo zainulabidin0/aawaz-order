@@ -3,6 +3,7 @@
   "outputDirectory": "build/client",
   "functions": {
     "api/index.js": {
+      "includeFiles": "{build/server/**,node_modules/.prisma/**}",
       "memory": 1024,
       "maxDuration": 30
     }

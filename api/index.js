@@ -1,29 +1,31 @@
-// Vercel serverless function — Remix SSR entry
-// All non-static requests are routed here via vercel.json rewrites.
-
+// Vercel serverless function — Remix SSR entry (Web Fetch API)
 const { createRequestHandler } = require("@remix-run/node");
+const { pathToFileURL } = require("url");
 const path = require("path");
 
-const buildPath = path.join(__dirname, "..", "build", "server", "index.js");
+const buildPath = pathToFileURL(
+  path.join(__dirname, "..", "build", "server", "index.js"),
+).href;
 
-let handler;
+let remixHandler;
 
 async function getHandler() {
-  if (!handler) {
-    // Clear require cache on each cold start to pick up fresh build
+  if (!remixHandler) {
     const build = await import(buildPath);
-    handler = createRequestHandler(build, process.env.NODE_ENV || "production");
+    remixHandler = createRequestHandler(
+      build,
+      process.env.NODE_ENV || "production",
+    );
   }
-  return handler;
+  return remixHandler;
 }
 
-module.exports = async (req, res) => {
+module.exports = async (request) => {
   try {
-    const h = await getHandler();
-    await h(req, res);
+    const handler = await getHandler();
+    return await handler(request);
   } catch (err) {
     console.error("[AawazOrder] Server error:", err);
-    res.statusCode = 500;
-    res.end("Internal Server Error");
+    return new Response("Internal Server Error", { status: 500 });
   }
 };
