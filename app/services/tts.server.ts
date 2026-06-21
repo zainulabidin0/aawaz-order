@@ -15,13 +15,14 @@ function getOpenAI() {
  */
 export async function textToSpeechUrdu(text: string): Promise<string> {
   const client = getOpenAI();
+  const input = text.trim().slice(0, 400);
 
   const response = await client.audio.speech.create({
     model: "tts-1",
-    voice: "nova",   // Clear, friendly voice that handles Urdu well
-    input: text,
+    voice: "nova",
+    input,
     response_format: "mp3",
-    speed: 0.9,      // Slightly slower for clarity
+    speed: 1.05,
   });
 
   const buffer = Buffer.from(await response.arrayBuffer());

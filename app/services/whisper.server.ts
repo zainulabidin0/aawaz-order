@@ -37,16 +37,16 @@ export async function transcribeAudio(
     file: audioFile,
     model: "whisper-1",
     language: language ?? "ur",
-    response_format: "verbose_json",
-    // Prompt helps guide Whisper to expect Urdu/Pakistani context
+    response_format: "text",
     prompt:
       "یہ ایک پاکستانی گاہک کا آرڈر ہے۔ گاہک اردو یا پنجابی میں بول رہا ہے۔ آرڈر میں پروڈکٹ کا نام، مقدار، نام، فون نمبر اور پتہ شامل ہو سکتا ہے۔",
   });
 
+  const transcript = typeof response === "string" ? response : "";
+
   return {
-    transcript: response.text,
-    language: response.language ?? language ?? "ur",
-    duration: response.duration,
+    transcript,
+    language: language ?? "ur",
   };
 }
 

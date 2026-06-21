@@ -5,12 +5,12 @@
     "api/index.js": {
       "includeFiles": "{build/server/**,node_modules/.prisma/**}",
       "memory": 1024,
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "rewrites": [
     {
-      "source": "/((?!assets/).*)",
+      "source": "/((?!assets/|voice-widget\\.js|favicon\\.ico).*)",
       "destination": "/api/index"
     }
   ]

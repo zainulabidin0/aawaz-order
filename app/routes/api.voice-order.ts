@@ -43,18 +43,29 @@ function corsHeaders(origin: string) {
   };
 }
 
-// Handle CORS preflight
+// Handle CORS preflight and health checks (must stay fast — no OpenAI calls).
 export async function loader({ request }: ActionFunctionArgs) {
   const origin = request.headers.get("Origin") ?? "";
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders(origin),
-  });
+  const headers = corsHeaders(origin);
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers });
+  }
+
+  return json({ ok: true }, { headers });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   const origin = request.headers.get("Origin") ?? "";
   const headers = corsHeaders(origin);
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers });
+  }
+
+  const startedAt = Date.now();
+  const logStep = (step: string) =>
+    console.log(`[voice-order] ${step} +${Date.now() - startedAt}ms`);
 
   try {
     const url = new URL(request.url);
@@ -88,6 +99,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Get Shopify admin client using the stored offline session for this shop
     const { admin } = await unauthenticated.admin(shop);
+    logStep("shopify session loaded");
 
     // Load app settings for this shop
     const settings = await db.appSettings.findUnique({ where: { shop } });
@@ -102,6 +114,7 @@ export async function action({ request }: ActionFunctionArgs) {
       audioFile.name || "audio.webm",
       language
     );
+    logStep("whisper done");
 
     if (!transcript.trim()) {
       const audio = await textToSpeechUrdu(UrduMessages.generalError());
@@ -113,14 +126,17 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // ── Step 2: Extract order details with GPT-4o ──────────────────────────
     const extraction = await extractOrderDetails(transcript);
+    logStep("gpt extract done");
 
     // ── Step 3: Search Shopify product catalog ─────────────────────────────
     const products = await searchProducts(admin, extraction.product_query, 5);
+    logStep("product search done");
 
     if (products.length === 0) {
       const audio = await textToSpeechUrdu(
         UrduMessages.productNotFound(extraction.product_query_original)
       );
+      logStep("product not found response ready");
       return json(
         {
           stage: "product_not_found",
@@ -189,7 +205,10 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     // ── Step 6: Generate TTS confirmation audio ────────────────────────────
-    const audio = await textToSpeechUrdu(confirmationText);
+    const audio = await textToSpeechUrdu(
+      extraction.response_urdu || confirmationText
+    );
+    logStep("tts done");
 
     // If auto-confirm is enabled, create the draft order immediately
     if (settings?.autoConfirm) {
@@ -212,6 +231,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     // Return confirmation screen data (customer must tap "Confirm")
+    logStep("confirm response ready");
     return json(
       {
         stage: "confirm",
