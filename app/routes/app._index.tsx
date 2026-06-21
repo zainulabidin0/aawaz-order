@@ -18,6 +18,7 @@ import {
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { themeAppEmbedUrl } from "../utils/theme-embed.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await authenticate.admin(request);
@@ -42,11 +43,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     recentOrders,
     settings,
     appUrl: process.env.SHOPIFY_APP_URL ?? "",
+    themeEmbedUrl: themeAppEmbedUrl(
+      shop,
+      process.env.SHOPIFY_API_KEY ?? "",
+    ),
   });
 }
 
 export default function Index() {
-  const { stats, recentOrders, settings, shop } =
+  const { stats, recentOrders, settings, shop, themeEmbedUrl } =
     useLoaderData<typeof loader>();
   const navigate = useNavigate();
 
@@ -89,33 +94,42 @@ export default function Index() {
       }}
     >
       <Layout>
-        {/* Setup banner shown before first order */}
+        <Layout.Section>
+          <Banner
+            title="Enable the voice widget on your storefront"
+            tone="warning"
+            action={{
+              content: "Open App embeds",
+              url: themeEmbedUrl,
+              external: true,
+            }}
+            secondaryAction={{
+              content: "Configure Settings",
+              onAction: () => navigate("/app/settings"),
+            }}
+          >
+            <BlockStack gap="200">
+              <Text as="p">
+                In the theme editor, open <strong>App embeds</strong> and turn on{" "}
+                <strong>Aawaz Order Widget</strong>. If it is missing, publish the
+                theme extension with <code>shopify app deploy</code> from this
+                project (Vercel deploy alone is not enough).
+              </Text>
+              <Text as="p">
+                Customers will see a floating microphone button and can place
+                orders by speaking in <strong>Urdu or Punjabi</strong>.
+              </Text>
+            </BlockStack>
+          </Banner>
+        </Layout.Section>
+
         {stats.totalOrders === 0 && (
           <Layout.Section>
-            <Banner
-              title="Aawaz Order Setup"
-              tone="info"
-              action={{
-                content: "Go to Theme Editor",
-                url: `https://${shop}/admin/themes/current/editor`,
-                external: true,
-              }}
-              secondaryAction={{
-                content: "Configure Settings",
-                onAction: () => navigate("/app/settings"),
-              }}
-            >
-              <BlockStack gap="200">
-                <Text as="p">
-                  To activate the voice widget on your store, go to your{" "}
-                  <strong>Theme Editor → App embeds</strong> and enable{" "}
-                  <strong>Aawaz Order Widget</strong>.
-                </Text>
-                <Text as="p">
-                  Customers will see a floating microphone button and can place
-                  orders by speaking in <strong>Urdu or Punjabi</strong>.
-                </Text>
-              </BlockStack>
+            <Banner title="Waiting for your first voice order" tone="info">
+              <Text as="p">
+                After enabling the widget, test it on your storefront. New orders
+                will appear in the table below.
+              </Text>
             </Banner>
           </Layout.Section>
         )}

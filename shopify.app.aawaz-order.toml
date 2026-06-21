@@ -1,0 +1,18 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "f134b94d1430dd5a0e609a3fa5e9b2b7"
+application_url = "https://aawaz-order.vercel.app/"
+embedded = true
+name = "aawaz order"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,write_customers,write_draft_orders,read_draft_orders,read_orders,write_orders,read_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://aawaz-order.vercel.app/auth/callback" ]
+
+[webhooks]
+api_version = "2026-04"

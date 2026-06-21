@@ -22,6 +22,7 @@ import {
 import { useState, useCallback } from "react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { themeAppEmbedUrl } from "../utils/theme-embed.server";
 
 const LANGUAGE_OPTIONS = [
   { label: "اردو — Urdu", value: "ur" },
@@ -47,6 +48,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return json({
     shop,
     appUrl: process.env.SHOPIFY_APP_URL ?? "",
+    themeEmbedUrl: themeAppEmbedUrl(
+      shop,
+      process.env.SHOPIFY_API_KEY ?? "",
+    ),
     settings: settings ?? {
       language: "ur",
       widgetColor: "#16a34a",
@@ -76,7 +81,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function Settings() {
-  const { settings, appUrl, shop } = useLoaderData<typeof loader>();
+  const { settings, appUrl, shop, themeEmbedUrl } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -265,15 +270,17 @@ export default function Settings() {
             title="Enable widget in Theme Editor"
             illustration="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
             primaryAction={{
-              content: "Open Theme Editor",
-              url: `https://${shop}/admin/themes/current/editor?context=apps`,
+              content: "Open App embeds",
+              url: themeEmbedUrl,
               external: true,
             }}
           >
             <BlockStack gap="200">
               <Text as="p">
                 After saving settings, activate the widget in your Shopify Theme
-                Editor:
+                Editor. If <strong>Aawaz Order Widget</strong> is not listed under
+                App embeds, run <code>shopify app deploy</code> from the project
+                folder first.
               </Text>
               <ol style={{ paddingLeft: 20 }}>
                 <li>Open Theme Editor → click App embeds (left sidebar)</li>

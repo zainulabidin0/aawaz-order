@@ -4,3 +4,5 @@ api_version = "2024-01"
 type = "theme_app_extension"
 name = "Aawaz Order Widget"
 handle = "voice-order-widget"
+
+uid = "517a7401-bf10-0210-d692-98d968359bfe4b516d44"

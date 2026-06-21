@@ -1,6 +1,6 @@
 name = "Aawaz Order"
 client_id = "{{ SHOPIFY_API_KEY }}"
-application_url = "{{ SHOPIFY_APP_URL }}"
+application_url = "https://aawaz-order.vercel.app"
 embedded = true
 
 [build]
@@ -12,7 +12,7 @@ scopes = "read_products,write_orders,read_orders,write_draft_orders,read_draft_o
 
 [auth]
 redirect_urls = [
-  "{{ SHOPIFY_APP_URL }}/auth/callback"
+  "https://aawaz-order.vercel.app/auth/callback"
 ]
 
 [webhooks]

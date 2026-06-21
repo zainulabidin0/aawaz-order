@@ -1,0 +1,28 @@
+{
+  "voice_button": {
+    "name": "Aawaz Order Widget",
+    "settings": {
+      "enabled": {
+        "label": "Enable voice ordering widget"
+      },
+      "api_url": {
+        "label": "App API URL",
+        "info": "Your Aawaz Order API endpoint, e.g. https://aawaz-order.vercel.app/api/voice-order"
+      },
+      "language": {
+        "label": "Voice language",
+        "options__1": { "label": "اردو — Urdu" },
+        "options__2": { "label": "پنجابی — Punjabi" },
+        "options__3": { "label": "اردو + پنجابی — Both" }
+      },
+      "primary_color": {
+        "label": "Widget button color"
+      },
+      "position": {
+        "label": "Button position",
+        "options__1": { "label": "Bottom Right (default)" },
+        "options__2": { "label": "Bottom Left" }
+      }
+    }
+  }
+}
