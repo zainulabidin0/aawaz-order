@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run setup && npm run build",
+  "outputDirectory": "build/client",
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!assets/).*)",
+      "destination": "/api/index"
+    }
+  ]
+}
