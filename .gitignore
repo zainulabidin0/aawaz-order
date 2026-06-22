@@ -6,3 +6,4 @@ public/build/
 *.db
 *.db-journal
 .shopify/
+.vercel

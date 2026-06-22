@@ -33,6 +33,7 @@ export default function App() {
             Dashboard
           </Link>
           <Link to="/app/settings">Settings</Link>
+          <Link to="/app/reviews">Review Analysis</Link>
         </NavMenu>
         <Outlet />
       </PolarisAppProvider>

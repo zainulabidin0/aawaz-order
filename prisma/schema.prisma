@@ -71,3 +71,20 @@ model VoiceOrder {
   @@index([shop])
   @@index([status])
 }
+
+// Product review sentiment analyses (English + Roman Urdu)
+model ReviewAnalysis {
+  id                String   @id @default(cuid())
+  shop              String
+  reviewText        String
+  englishSentiment  String?
+  englishLabel      Int?
+  englishConfidence Float?
+  romanSentiment    String?
+  romanConfidence   Float?
+  source            String   @default("playground")
+  createdAt         DateTime @default(now())
+
+  @@index([shop])
+  @@index([createdAt])
+}
