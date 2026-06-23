@@ -27,6 +27,16 @@ function serviceUrl() {
   return url;
 }
 
+/** Render free tier can take 30–60s to wake; Vercel allows up to 60s on this route. */
+const SERVICE_TIMEOUT_MS = 55_000;
+
+function modelsReady(data: Record<string, unknown>): boolean {
+  if (data.models_loaded === true) return true;
+  if (data.model_loaded === true) return true;
+  // Some deployments only return status without a boolean flag
+  return data.status === "ok" && data.models_loaded === undefined && data.model_loaded === undefined;
+}
+
 export async function predictReviewSentiment(
   review: string
 ): Promise<ReviewPrediction> {
@@ -34,6 +44,7 @@ export async function predictReviewSentiment(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ review }),
+    signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -51,27 +62,47 @@ export async function checkReviewAnalysisHealth(): Promise<{
   modelsLoaded?: boolean;
   error?: string;
 }> {
-  try {
-    const response = await fetch(`${serviceUrl()}/health`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) {
-      return { ok: false, error: `Health check failed (${response.status})` };
+  const url = `${serviceUrl()}/health`;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        return { ok: false, error: `Health check failed (${response.status})` };
+      }
+      const data = (await response.json()) as Record<string, unknown>;
+      const loaded = modelsReady(data);
+      if (loaded) {
+        return { ok: true, modelsLoaded: true };
+      }
+      return {
+        ok: false,
+        modelsLoaded: false,
+        error: "Service responded but sentiment models are not loaded",
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Health check failed";
+      const isTimeout =
+        message.includes("timeout") || message.includes("aborted");
+      if (attempt === 1 && isTimeout) {
+        console.warn(
+          `[review-analysis] health timeout (attempt ${attempt}), retrying — Render may be waking up`,
+        );
+        continue;
+      }
+      return {
+        ok: false,
+        error: isTimeout
+          ? "Service timed out. Render free tier may be waking up — try again in a minute."
+          : message,
+      };
     }
-    const data = (await response.json()) as {
-      status: string;
-      models_loaded: boolean;
-    };
-    return {
-      ok: data.status === "ok" && data.models_loaded,
-      modelsLoaded: data.models_loaded,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : "Health check failed",
-    };
   }
+
+  return { ok: false, error: "Could not reach review analysis service" };
 }
 
 export function isPositiveEnglishSentiment(sentiment: string | null | undefined) {

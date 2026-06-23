@@ -130,7 +130,12 @@ def health():
             roman_vectorizer,
         )
     )
-    return {"status": "ok" if models_loaded else "error", "models_loaded": models_loaded}
+    status = "ok" if models_loaded else "error"
+    return {
+        "status": status,
+        "models_loaded": models_loaded,
+        "model_loaded": models_loaded,  # alias for older clients
+    }
 
 
 @app.post("/predict")

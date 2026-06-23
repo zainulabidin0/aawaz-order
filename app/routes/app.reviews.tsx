@@ -175,6 +175,11 @@ export default function ReviewsPage() {
                   {serviceHealth.error}
                 </Text>
               )}
+              <Text as="p" tone="subdued">
+                On Render free tier the service sleeps after inactivity and can
+                take up to a minute to wake. Open the service URL in a browser,
+                wait for it to load, then refresh this page.
+              </Text>
             </Banner>
           </Layout.Section>
         )}
