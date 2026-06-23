@@ -244,7 +244,7 @@ export default function ReviewsPage() {
                       Latest result
                     </Text>
                     <InlineStack gap="300" wrap>
-                      {actionData.prediction.english_sentiment && (
+                      {actionData.prediction.english_sentiment ? (
                         <ResultCard
                           title="English"
                           sentiment={
@@ -254,8 +254,8 @@ export default function ReviewsPage() {
                             actionData.prediction.english_sentiment.confidence
                           }
                         />
-                      )}
-                      {actionData.prediction.roman_sentiment && (
+                      ) : null}
+                      {actionData.prediction.roman_sentiment ? (
                         <ResultCard
                           title="Roman Urdu"
                           sentiment={
@@ -265,8 +265,14 @@ export default function ReviewsPage() {
                             actionData.prediction.roman_sentiment.confidence
                           }
                         />
-                      )}
+                      ) : null}
                     </InlineStack>
+                    {!actionData.prediction.english_sentiment &&
+                      !actionData.prediction.roman_sentiment && (
+                        <Text as="p" tone="subdued">
+                          No sentiment labels returned from the service.
+                        </Text>
+                      )}
                     {actionData.prediction.warnings &&
                       actionData.prediction.warnings.length > 0 && (
                         <Text as="p" tone="caution" variant="bodySm">

@@ -54,7 +54,73 @@ export async function predictReviewSentiment(
     );
   }
 
-  return response.json() as Promise<ReviewPrediction>;
+  const body = (await response.json()) as Record<string, unknown>;
+  return normalizePredictionResponse(body, review);
+}
+
+/** Map our dual-model API or legacy single-model `{ sentiment, score }` responses. */
+export function normalizePredictionResponse(
+  body: Record<string, unknown>,
+  review: string,
+): ReviewPrediction {
+  if (body.english_sentiment || body.roman_sentiment) {
+    return {
+      review: String(body.review ?? review),
+      english_sentiment: body.english_sentiment as
+        | EnglishSentimentResult
+        | undefined,
+      roman_sentiment: body.roman_sentiment as RomanSentimentResult | undefined,
+      warnings: body.warnings as string[] | undefined,
+    };
+  }
+
+  const rawSentiment = String(body.sentiment ?? "").trim();
+  if (!rawSentiment) {
+    throw new Error("Review service returned no sentiment data");
+  }
+
+  const score = typeof body.score === "number" ? body.score : undefined;
+  const confidence =
+    typeof body.confidence === "number" ? body.confidence : undefined;
+  const label =
+    score === 1
+      ? 1
+      : score === -1
+        ? 0
+        : rawSentiment.toLowerCase().includes("pos")
+          ? 1
+          : 0;
+  const sentiment =
+    rawSentiment.charAt(0).toUpperCase() +
+    rawSentiment.slice(1).toLowerCase();
+
+  const englishBlock: EnglishSentimentResult = {
+    sentiment,
+    label,
+    score,
+    confidence,
+  };
+
+  const romanBlock: RomanSentimentResult = { sentiment, confidence };
+
+  if (looksLikeRomanUrdu(review)) {
+    return {
+      review: String(body.review ?? review),
+      roman_sentiment: romanBlock,
+    };
+  }
+
+  return {
+    review: String(body.review ?? review),
+    english_sentiment: englishBlock,
+  };
+}
+
+function looksLikeRomanUrdu(text: string): boolean {
+  if (/[\u0600-\u06FF]/.test(text)) return true;
+  return /\b(bohat|bahut|acha|achha|achhi|buri|bura|kharab|nai|nahi|nahin|hai|thi|tha|theen|shukriya|mazay|delivery)\b/i.test(
+    text,
+  );
 }
 
 export async function checkReviewAnalysisHealth(): Promise<{
